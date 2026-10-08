@@ -150,7 +150,7 @@ internal sealed class VaultConfigurationProvider : ConfigurationProvider, IDispo
         LoadOutcome outcome;
         try
         {
-            outcome = LoadDataAsync(incremental: false).GetAwaiter().GetResult();
+            outcome = WaitInitialLoad(LoadDataAsync(incremental: false));
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -211,6 +211,8 @@ internal sealed class VaultConfigurationProvider : ConfigurationProvider, IDispo
             var outcome = await LoadDataAsync(incremental).ConfigureAwait(false);
             if (outcome.Data is null)
             {
+                if (outcome.ErrorCode == TimeoutCode)
+                    VaultLog.ConfigurationTimeout(_logger, _store.ProviderName, _options.LoadTimeout.TotalSeconds);
                 VaultLog.ConfigurationReloadFailed(_logger, _store.ProviderName, outcome.ErrorCode);
                 return;
             }
@@ -268,6 +270,40 @@ internal sealed class VaultConfigurationProvider : ConfigurationProvider, IDispo
 
     private readonly record struct LoadOutcome(Dictionary<string, string?>? Data, Dictionary<string, Snapshot>? Snapshot, string ErrorCode);
 
+    /// <summary>Folga sobre <see cref="VaultConfigurationOptions.LoadTimeout"/> para a espera síncrona da carga inicial.</summary>
+    internal static readonly TimeSpan InitialLoadGrace = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// Espera a carga inicial no próprio thread, limitada a <see cref="VaultConfigurationOptions.LoadTimeout"/> mais
+    /// <see cref="InitialLoadGrace"/>.
+    /// </summary>
+    /// <remarks>
+    /// O cancelamento por tempo limite é cooperativo e a continuação dele precisa de uma thread livre do pool: com o pool
+    /// saturado (muitas requisições ou testes em paralelo bloqueando threads), ou com um leitor que ignore o
+    /// <see cref="CancellationToken"/>, a subida esperaria muito além do limite ou para sempre. A espera direta no handle
+    /// da tarefa não depende do pool. A carga que terminar depois é descartada (a recarga periódica a refaz) e uma falha
+    /// tardia é observada, sem virar exceção não observada.
+    /// </remarks>
+    private LoadOutcome WaitInitialLoad(Task<LoadOutcome> loading)
+    {
+        if (((IAsyncResult)loading).AsyncWaitHandle.WaitOne(_options.LoadTimeout + InitialLoadGrace))
+        {
+            var outcome = loading.GetAwaiter().GetResult();
+            if (outcome.ErrorCode == TimeoutCode)
+                VaultLog.ConfigurationTimeout(_logger, _store.ProviderName, _options.LoadTimeout.TotalSeconds);
+            return outcome;
+        }
+
+        _ = loading.ContinueWith(
+            static task => _ = task.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+        VaultLog.ConfigurationTimeout(_logger, _store.ProviderName, _options.LoadTimeout.TotalSeconds);
+        return new LoadOutcome(null, null, TimeoutCode);
+    }
+
+    /// <summary>Carga com tempo limite; o log do tempo esgotado fica com quem chama (uma única vez por carga).</summary>
     private async Task<LoadOutcome> LoadDataAsync(bool incremental)
     {
         long start = Stopwatch.GetTimestamp();
@@ -278,7 +314,6 @@ internal sealed class VaultConfigurationProvider : ConfigurationProvider, IDispo
         }
         catch (OperationCanceledException) when (timeout.IsCancellationRequested)
         {
-            VaultLog.ConfigurationTimeout(_logger, _store.ProviderName, _options.LoadTimeout.TotalSeconds);
             return new LoadOutcome(null, null, TimeoutCode);
         }
     }

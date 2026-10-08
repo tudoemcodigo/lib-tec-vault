@@ -261,7 +261,7 @@ dotnet test --project TEC.Vault.LoadTests -c Release --treenode-filter "/*/*/*/*
 
 Para a integração com HashiCorp Vault, suba um container descartável na porta **18200** e prepare-o com `.github/scripts/vault-dev.sh` (passo a passo em [docs/testes.md](docs/testes.md)).
 
-594 testes unitários por TFM em `TEC.Vault.Tests` (TUnit, com testes de contrato, fuzzing e vazamento sob carga), 37 de integração (`[Category=Integracao]`: HashiCorp Vault real em container e Key Vault de testes, pulados com motivo sem ambiente), 7 de carga rápida (`Carga-CI`) e 13 pesados (`Carga-Pesada`), estes de carga só sob demanda no `performance.yml` (manual: tempo em runner compartilhado é ruidoso e não bloqueia PR nem versão). Detalhes em [docs/testes.md](docs/testes.md).
+595 testes unitários por TFM em `TEC.Vault.Tests` (TUnit, com testes de contrato, fuzzing e vazamento sob carga), 37 de integração (`[Category=Integracao]`: HashiCorp Vault real em container e Key Vault de testes, pulados com motivo sem ambiente), 7 de carga rápida (`Carga-CI`) e 13 pesados (`Carga-Pesada`), estes de carga só sob demanda no `performance.yml` (manual: tempo em runner compartilhado é ruidoso e não bloqueia PR nem versão). Detalhes em [docs/testes.md](docs/testes.md).
 
 ## 🤝 Contribuição
 
