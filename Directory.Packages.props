@@ -6,8 +6,8 @@
 
   <!--
     Componentes TEC.* consumidos: versão PUBLICADA no feed tec-interno (todos os pacotes de um componente têm a mesma
-    versão). No csproj use <TecReference Include="TEC.X" />, sem versão: com o repositório vizinho clonado vira
-    ProjectReference; no CI e no consumidor, PackageReference nesta versão (build/Tec.Build.targets).
+    versão). No csproj use <TecReference Include="TEC.X" />, sem versão: vira PackageReference nesta versão, na máquina
+    e no CI; o projeto vizinho só entra com -p:TecUseLocalProjects=true (build/Tec.Build.targets).
   -->
   <ItemGroup>
     <PackageVersion Include="TEC.Core" Version="0.0.1" />
