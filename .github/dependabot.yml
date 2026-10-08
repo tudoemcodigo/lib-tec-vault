@@ -33,6 +33,16 @@ updates:
       nuget:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    # Fora do Dependabot, atualizados à mão (docs/padroes.md, "Dependências pareadas"):
+    #   - ASP.NET Core e EF Core têm uma versão por TFM no Directory.Packages.props (8.x no net8.0, 10.x no net10.0,
+    #     com Condition). O Dependabot não entende a condição: propõe a major errada no bloco do net8.0 e regenera o
+    #     lock de um TFM só (NU1004 no restore).
+    #   - Roslyn (Microsoft.CodeAnalysis.*): a versão do gerador de código fica presa ao SDK mínimo suportado.
+    # Vulnerabilidade conhecida nesses pacotes continua quebrando o restore (NuGetAudit).
+    ignore:
+      - dependency-name: "Microsoft.AspNetCore.*"
+      - dependency-name: "Microsoft.EntityFrameworkCore*"
+      - dependency-name: "Microsoft.CodeAnalysis*"
 
   # Workflows centrais (tudoemcodigo/tec-workflows) e actions de terceiros
   - package-ecosystem: github-actions
