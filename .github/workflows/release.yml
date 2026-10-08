@@ -1,0 +1,35 @@
+name: Publicar versão
+
+# Publicação de versão estável ou rc: Actions -> "Publicar versão" -> Run workflow -> versão (ex.: 1.0.0 ou 1.1.0-rc.1).
+# Roda convenções, pack, testes unitários com cobertura e CodeQL em paralelo; só então tag, Release e GitHub Packages.
+# As prévias (X.Y.Z-preview.N) saem sozinhas do ci.yml a cada push na main. Depois de publicar X.Y.Z, suba a <Version>
+# do Directory.Build.props.
+on:
+  workflow_dispatch:
+    inputs:
+      versao:
+        description: "Versão (ex.: 1.0.0 ou 1.1.0-rc.1)"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publicar-versao
+  cancel-in-progress: false
+
+jobs:
+  release:
+    uses: tudoemcodigo/tec-workflows/.github/workflows/dotnet-release.yml@v1
+    permissions:
+      contents: write          # tag e Release
+      packages: write          # push no feed NuGet do GitHub
+      actions: read            # CodeQL
+      security-events: read    # CodeQL
+      id-token: write          # exigido pelo job de testes reutilizável (Azure OIDC; não usado aqui)
+    with:
+      version: ${{ inputs.versao }}
+      solution: TEC.Vault.slnx
+      private-feed: true
+      unit-tests: TEC.Vault.Tests /*/*/*/*[Category!=Integracao]

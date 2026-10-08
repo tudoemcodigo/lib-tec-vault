@@ -1,0 +1,16 @@
+<Project>
+
+  <!-- Identidade do componente; as convenções comuns (alvos, análise, segurança, AOT, metadados NuGet) vêm do build/ -->
+  <PropertyGroup>
+    <TecComponent>TEC.Vault</TecComponent>
+    <Version>0.0.1</Version>
+  </PropertyGroup>
+
+  <Import Project="build/Tec.Build.props" />
+
+  <!-- Gerador de carga: o cofre simulado em HTTP usa o transporte interno de AzureKeyVaultOptions -->
+  <ItemGroup Condition="'$(IsTecPackage)' == 'true'">
+    <InternalsVisibleTo Include="TEC.Vault.LoadGenerator" />
+  </ItemGroup>
+
+</Project>

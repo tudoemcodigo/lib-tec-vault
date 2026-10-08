@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Configurações de build, segurança e metadados comuns: ..\Directory.Build.props -->
+
+  <PropertyGroup>
+    <RootNamespace>TEC.Vault</RootNamespace>
+    <Description>Guarda e recupera segredos, chaves e certificados com uma única API: troca de cofre sem mudar o código, criptografia sem expor chaves e auditoria de cada acesso sem registrar valores.</Description>
+    <PackageTags>vault;secrets;keyvault;zero-trust;tec</PackageTags>
+  </PropertyGroup>
+
+  <!--
+    TEC.Core: pacote do feed interno (tec-interno); já traz Microsoft.Extensions.DependencyInjection.Abstractions.
+    Este pacote NÃO depende de SDK de nuvem: cada provedor fica no seu próprio pacote.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <TecReference Include="TEC.Core" />
+  </ItemGroup>
+
+</Project>

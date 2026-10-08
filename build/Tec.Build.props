@@ -1,0 +1,112 @@
+<Project>
+
+  <!--
+    ARQUIVO CANÔNICO: mantido em tudoemcodigo/tec-workflows (template/build). Não edite no componente:
+    altere no tec-workflows e rode scripts/sync-template.sh. O CI (job "Convenções") falha se a cópia divergir.
+
+    Convenções comuns de build dos componentes TEC.*. Importado pelo Directory.Build.props do repositório, que define
+    antes do import:
+      TecComponent  nome do componente (ex.: TEC.Vault), igual ao nome da pasta/repositório
+      Version       versão de todos os pacotes do repositório
+  -->
+
+  <PropertyGroup>
+    <TecRepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))\</TecRepoRoot>
+    <!-- Pasta que contém os repositórios vizinhos (D:\Projetos\Componentes\TEC.Core, TEC.Vault, ...) -->
+    <TecComponentsRoot Condition="'$(TecComponentsRoot)' == ''">$([System.IO.Path]::GetFullPath('$(TecRepoRoot)..'))\</TecComponentsRoot>
+    <TecProjectRelativeDir>$([MSBuild]::MakeRelative('$(TecRepoRoot)', '$(MSBuildProjectDirectory)').Replace('\', '/'))</TecProjectRelativeDir>
+  </PropertyGroup>
+
+  <!-- Linguagem e alvos: .NET 8 (LTS) e .NET 10 (LTS). Um projeto pode redefinir (ex.: gerador em netstandard2.0). -->
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <!--
+    Classificação do projeto:
+      samples/**                                   exemplos (nunca pacote)
+      *.Tests, *.LoadTests, *.Benchmarks           testes e medições (nunca pacote)
+      *.Generator                                  source generator (empacotado dentro de outro pacote como analisador)
+      demais projetos do repositório               PACOTE NuGet: regras de segurança, AOT e metadados
+  -->
+  <PropertyGroup>
+    <IsTecSample Condition="$(TecProjectRelativeDir.StartsWith('samples/'))">true</IsTecSample>
+    <IsTecTestProject Condition="$(MSBuildProjectName.EndsWith('.Tests')) or $(MSBuildProjectName.EndsWith('.LoadTests')) or $(MSBuildProjectName.EndsWith('.Benchmarks'))">true</IsTecTestProject>
+    <IsTecGenerator Condition="$(MSBuildProjectName.EndsWith('.Generator'))">true</IsTecGenerator>
+    <IsTecPackage Condition="'$(IsTecPackage)' == '' and '$(IsTecSample)' != 'true' and '$(IsTecTestProject)' != 'true' and '$(IsTecGenerator)' != 'true'">true</IsTecPackage>
+    <IsPackable Condition="'$(IsTecPackage)' != 'true'">false</IsPackable>
+  </PropertyGroup>
+
+  <!-- Cadeia de suprimentos: vale para TODOS os projetos (o build de testes também executa código de terceiros) -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>low</NuGetAuditLevel>
+    <!-- Vulnerabilidade conhecida (baixa a crítica) em pacote direto ou transitivo quebra o build -->
+    <WarningsAsErrors>$(WarningsAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsAsErrors>
+  </PropertyGroup>
+
+  <!-- Estilo e análise: o .editorconfig é a fonte das regras; o build as aplica (IDExxxx inclusive) -->
+  <PropertyGroup>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisModeSecurity>All</AnalysisModeSecurity>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <!-- Testes, benchmarks e samples: sem SynchronizationContext, ConfigureAwait(false) só poluiria o código -->
+  <PropertyGroup Condition="'$(IsTecPackage)' != 'true'">
+    <NoWarn>$(NoWarn);CA2007</NoWarn>
+  </PropertyGroup>
+
+  <!-- Pacotes: qualquer aviso (CA, IDE, IL de AOT/trimming, nullable) é erro -->
+  <PropertyGroup Condition="'$(IsTecPackage)' == 'true'">
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Native AOT e trimming. Um pacote pode desligar (IsAotCompatible=false no csproj) justificando no comentário. -->
+    <IsAotCompatible Condition="'$(IsAotCompatible)' == ''">true</IsAotCompatible>
+    <!-- Consistência da API entre os TFMs (sem baseline: a 0.0.1 é a primeira publicação) -->
+    <EnablePackageValidation>true</EnablePackageValidation>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <!-- Metadados NuGet comuns (Description e PackageTags ficam no csproj de cada pacote) -->
+  <PropertyGroup Condition="'$(IsTecPackage)' == 'true'">
+    <PackageId Condition="'$(PackageId)' == ''">$(MSBuildProjectName)</PackageId>
+    <Authors>Roberto Oliveira</Authors>
+    <Company>Tudo em Código</Company>
+    <Copyright>Copyright © Tudo em Código</Copyright>
+    <PackageProjectUrl>https://www.tudoemcodigo.com</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageIcon>Logo.png</PackageIcon>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/tudoemcodigo/lib-$(TecComponent.ToLowerInvariant().Replace('.', '-'))</RepositoryUrl>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(IsTecPackage)' == 'true'">
+    <None Include="$(TecRepoRoot)Images/Logo.png" Pack="true" PackagePath="\" Visible="false" />
+    <!-- README do pacote: o da pasta do projeto, se existir; senão o README da raiz do repositório -->
+    <None Condition="Exists('$(MSBuildProjectDirectory)/README.md')" Include="$(MSBuildProjectDirectory)/README.md" Pack="true" PackagePath="\" Visible="false" />
+    <None Condition="!Exists('$(MSBuildProjectDirectory)/README.md')" Include="$(TecRepoRoot)README.md" Pack="true" PackagePath="\" Visible="false" />
+    <!-- Polyfills internos para net8.0 (ex.: System.Threading.Lock): o código usa a API moderna sem #if -->
+    <Compile Include="$(TecRepoRoot)build/Polyfills/*.cs" Link="Polyfills/%(Filename)%(Extension)" Visible="false" />
+    <!-- Testes, carga e benchmarks do próprio componente exercitam peças internas -->
+    <InternalsVisibleTo Include="$(TecComponent).Tests" />
+    <InternalsVisibleTo Include="$(TecComponent).LoadTests" />
+    <InternalsVisibleTo Include="$(TecComponent).Benchmarks" />
+  </ItemGroup>
+
+</Project>

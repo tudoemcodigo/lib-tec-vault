@@ -1,0 +1,13 @@
+# ARQUIVO CANÔNICO: mantido em tudoemcodigo/tec-workflows (template). Não edite no componente.
+# Configuração do zizmor (auditoria de segurança dos workflows): uvx zizmor .
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        # Workflows e actions da própria organização (tudoemcodigo/tec-workflows) por tag de versão (v1);
+        # actions de terceiros sempre fixadas por SHA
+        "tudoemcodigo/*": ref-pin
+        "*": hash-pin
+  use-trusted-publishing:
+    # O GitHub Packages não tem trusted publishing (OIDC): o push usa o GITHUB_TOKEN efêmero da execução
+    disable: true

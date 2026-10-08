@@ -1,0 +1,47 @@
+name: CI
+
+# Validação no workflow reutilizável central (tudoemcodigo/tec-workflows): convenções, build e pacote, unitários
+# em matriz, integração (se houver) e CodeQL, em paralelo. Testes de carga: só no performance.yml (manual). Push na
+# main (merge do PR): depois do ci-ok verde, publica a prévia <Version>-preview.N (N sequencial por versão) no GitHub
+# Packages. PR, agendamento e disparo manual nunca publicam; versão estável ou rc só pelo release.yml.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  merge_group:
+  schedule:
+    - cron: '0 6 * * 1'   # segunda, 06:00 UTC: CodeQL novo, vulnerabilidades novas e integração com o Key Vault
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # PR: um push novo cancela a execução anterior. Fora de PR, cada execução tem o próprio grupo: nenhum push na main
+  # fica sem a sua prévia (um grupo compartilhado descartaria execuções pendentes)
+  group: ${{ github.event_name == 'pull_request' && format('ci-{0}', github.ref) || format('ci-{0}', github.run_id) }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    uses: tudoemcodigo/tec-workflows/.github/workflows/dotnet-ci.yml@v1
+    permissions:
+      contents: read
+      pull-requests: read
+      packages: write          # prévia no push na main (o job de publicação só roda nesse caso)
+      actions: read
+      security-events: read
+      id-token: write   # OIDC no Key Vault de testes (só na main, fora de PR)
+    with:
+      solution: TEC.Vault.slnx
+      private-feed: true
+      unit-tests: TEC.Vault.Tests /*/*/*/*[Category!=Integracao]
+      integration-tests: TEC.Vault.Tests /*/*/*/*[Category=Integracao]
+      integration-setup: .github/scripts/integration-setup.sh
+      integration-teardown: .github/scripts/integration-teardown.sh
+      azure-client-id: ${{ vars.AZURE_CLIENT_ID }}
+      azure-tenant-id: ${{ vars.TEC_TESTES_TENANT_ID }}
+      azure-env: |
+        TEC_TESTES_VAULT_URI=${{ vars.TEC_TESTES_VAULT_URI }}
+        TEC_TESTES_TENANT_ID=${{ vars.TEC_TESTES_TENANT_ID }}

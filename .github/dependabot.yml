@@ -1,0 +1,49 @@
+# ARQUIVO CANÔNICO: mantido em tudoemcodigo/tec-workflows (template). Não edite no componente.
+#
+# Um PR semanal com todas as atualizações minor/patch (uma execução de CI em vez de várias); major em PR separado.
+# Cooldown: espera alguns dias por versões recém-lançadas (mitiga pacote comprometido publicado e retirado em seguida).
+#
+# O GitHub Packages exige autenticação mesmo para pacote público e o Dependabot não usa o GITHUB_TOKEN:
+# crie UMA VEZ, na organização, o secret do Dependabot PACKAGES_READ_TOKEN (PAT classic com read:packages)
+# em Settings -> Secrets and variables -> Dependabot.
+version: 2
+
+registries:
+  nuget-org:
+    type: nuget-feed
+    url: https://api.nuget.org/v3/index.json
+  tec-interno:
+    type: nuget-feed
+    url: https://nuget.pkg.github.com/tudoemcodigo/index.json
+    token: ${{secrets.PACKAGES_READ_TOKEN}}
+
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    registries: [nuget-org, tec-interno]
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "deps"
+    groups:
+      nuget:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # Workflows centrais (tudoemcodigo/tec-workflows) e actions de terceiros
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions:
+        patterns: ["*"]

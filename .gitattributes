@@ -1,0 +1,23 @@
+# ARQUIVO CANÔNICO: mantido em tudoemcodigo/tec-workflows (template). Não edite no componente.
+
+# Fim de linha: LF no repositório e na cópia de trabalho (scripts do Windows são a exceção)
+* text=auto eol=lf
+*.cs        text eol=lf diff=csharp
+*.cmd       text eol=crlf
+*.bat       text eol=crlf
+*.ps1       text eol=crlf
+
+# Binários (nunca converter nem tentar diff textual)
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.pdf       binary
+*.zip       binary
+*.dll       binary
+*.exe       binary
+*.nupkg     binary
+*.snupkg    binary
+*.pfx       binary
+*.snk       binary

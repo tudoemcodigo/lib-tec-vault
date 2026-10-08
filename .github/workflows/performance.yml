@@ -1,0 +1,66 @@
+name: Performance
+
+# Suítes pesadas e de carga: só sob demanda (Actions -> Performance -> Run workflow). Não rodam no PR nem na publicação.
+#   rapida -> TEC.Vault.LoadTests [Carga-CI]: carga curta com limites folgados (input suite = rapida ou todas)
+#   carga -> TEC.Vault.LoadTests [Carga-Pesada]: vazão, latência p50/p95/p99 e erros, com o cofre simulado e em memória
+# Medição de tempo em runner compartilhado tem ruído: compare tendências entre execuções, não números absolutos.
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "Suítes de carga: pesadas (Carga-Pesada), rapida (Carga-CI) ou todas"
+        type: choice
+        options: [pesadas, rapida, todas]
+        default: pesadas
+      fator:
+        description: "Fator de duração das medições (1 = padrão, ~3 minutos por cenário)"
+        type: choice
+        options: ['1', '2', '3', '5']
+        default: '1'
+      cofre_real:
+        description: "Rodar também o cenário contra o Key Vault de testes (só da main, exige as Variables de OIDC)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  rapida:
+    if: inputs.suite != 'pesadas'
+    uses: tudoemcodigo/tec-workflows/.github/workflows/dotnet-test.yml@v1
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+    with:
+      name: carga rápida
+      tests: TEC.Vault.LoadTests /*/*/*/*[Category=Carga-CI]
+      private-feed: true
+      artifact: carga
+
+  pesados:
+    if: inputs.suite != 'rapida'
+    uses: tudoemcodigo/tec-workflows/.github/workflows/dotnet-test.yml@v1
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+    with:
+      name: suítes pesadas
+      tests: TEC.Vault.LoadTests /*/*/*/*[Category=Carga-Pesada]
+      private-feed: true
+      env: |
+        TEC_CARGA_FATOR=${{ inputs.fator || '1' }}
+      # Cenário com o Key Vault real: taxa limitada, segredos com prefixo tec-teste-carga- removidos no fim
+      azure-client-id: ${{ inputs.cofre_real && vars.AZURE_CLIENT_ID || '' }}
+      azure-tenant-id: ${{ vars.TEC_TESTES_TENANT_ID }}
+      azure-env: |
+        TEC_TESTES_VAULT_URI=${{ vars.TEC_TESTES_VAULT_URI }}
+        TEC_TESTES_TENANT_ID=${{ vars.TEC_TESTES_TENANT_ID }}
+      artifact: pesados
+      timeout-minutes: 120

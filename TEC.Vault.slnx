@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/samples/">
+    <Project Path="samples/TEC.Vault.ConfigSelection/TEC.Vault.ConfigSelection.csproj" />
+    <Project Path="samples/TEC.Vault.LoadGenerator/TEC.Vault.LoadGenerator.csproj" />
+  </Folder>
+  <Project Path="TEC.Vault.AzureKeyVault/TEC.Vault.AzureKeyVault.csproj" />
+  <Project Path="TEC.Vault.HashiCorpVault/TEC.Vault.HashiCorpVault.csproj" />
+  <Project Path="TEC.Vault.Infisical/TEC.Vault.Infisical.csproj" />
+  <Project Path="TEC.Vault.InMemory/TEC.Vault.InMemory.csproj" />
+  <Project Path="TEC.Vault.LoadTests/TEC.Vault.LoadTests.csproj" />
+  <Project Path="TEC.Vault.Synced/TEC.Vault.Synced.csproj" />
+  <Project Path="TEC.Vault.Tests/TEC.Vault.Tests.csproj" />
+  <Project Path="TEC.Vault/TEC.Vault.csproj" />
+</Solution>
