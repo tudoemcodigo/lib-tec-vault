@@ -55,6 +55,25 @@ public class ConfigurationProviderTests
     }
 
     [Test]
+    public async Task Initial_load_timeout_holds_when_reader_ignores_cancellation()
+    {
+        // Leitor que não respeita o CancellationToken: só a espera limitada do Load() impede a subida de travar
+        var logs = new CapturingLoggerProvider();
+        using var factory = LoggerFactory.Create(b => b.AddProvider(logs));
+        var never = new TaskCompletionSource();
+        var store = new ScriptedSecretStore(Memory.Secrets()) { BeforeList = _ => never.Task };
+
+        var started = TimeProvider.System.GetTimestamp();
+        await Assert.That(() => new ConfigurationBuilder()
+                .AddTecVault(store, o => o.LoadTimeout = TimeSpan.FromMilliseconds(200), loggerFactory: factory).Build())
+            .Throws<InvalidOperationException>();
+
+        await Assert.That(TimeProvider.System.GetElapsedTime(started)).IsLessThan(TimeSpan.FromSeconds(10));
+        await Assert.That(logs.Entries.Count(e => e.Level == LogLevel.Error && e.Text.Contains("tempo limite"))).IsEqualTo(1);
+        never.SetResult();
+    }
+
+    [Test]
     public async Task Timeout_with_Optional_starts_with_empty_configuration()
     {
         var store = new ScriptedSecretStore(Memory.Secrets()) { BeforeList = ct => Task.Delay(Timeout.Infinite, ct) };

@@ -208,6 +208,8 @@ Opções da fonte; tabela completa em [⚙️ Opções](#️-opções). A consta
 ### Carga e recarga
 
 - **Carga inicial bloqueante:** o pipeline de configuração é síncrono; a subida espera a leitura do cofre, limitada por `LoadTimeout`.
+  O limite vale mesmo com o pool de threads saturado ou com um provedor que ignore o cancelamento: a espera é feita no
+  próprio thread, no máximo `LoadTimeout` + 2 s, e a carga que terminar depois é descartada (a recarga periódica a refaz).
 - **Recarga incremental:** só relê os segredos cuja versão (ou, sem versão na listagem, `UpdatedOn`) mudou desde a última carga. A cada 12 recargas (`FullReloadEvery`), relê tudo.
 - **Paralelismo limitado:** a primeira falha de leitura cancela as demais e a carga inteira falha (nunca publica uma configuração pela metade).
 - **Sem mudança, sem notificação:** se os valores não mudaram, `OnReload` não é disparado.

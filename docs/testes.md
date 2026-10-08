@@ -43,7 +43,7 @@ flowchart LR
 
 | Projeto | Categorias | Conteúdo | Quantidade |
 |---|---|---|---:|
-| `TEC.Vault.Tests` | *(sem categoria)* | Unitários, contrato, segurança, regressão, fuzz, vazamento sob carga, abuso de recursos | 594 por TFM |
+| `TEC.Vault.Tests` | *(sem categoria)* | Unitários, contrato, segurança, regressão, fuzz, vazamento sob carga, abuso de recursos | 595 por TFM |
 | `TEC.Vault.Tests` | `Integracao` | HashiCorp Vault real (contratos, Transit, PKI, lixeira) e Key Vault de testes | 37 |
 | `TEC.Vault.LoadTests` | `Carga-CI` | Concorrência e fumaça de carga (segundos) | 7 |
 | `TEC.Vault.LoadTests` | `Carga-Pesada` | Carga sustentada (~3 min por cenário), cenário com Key Vault real e 5 medições de performance | 13 |
