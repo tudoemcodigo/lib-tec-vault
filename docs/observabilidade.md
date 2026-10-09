@@ -1,3 +1,9 @@
+| 2011 | Warning | `Cofre {Provider}: circuito aberto após falhas repetidas; chamadas recusadas por {BreakSeconds} s...` | Circuit breaker abriu |
+| 2012 | Information | `Cofre {Provider}: circuito meio-aberto; testando o cofre com uma chamada.` | Fim da pausa |
+| 2013 | Information | `Cofre {Provider}: circuito fechado; o cofre voltou a responder.` | Chamada de teste com sucesso |
+| 2014 | Debug | `Cofre {Provider}: {Operation} de '{ItemName}' recusada com o circuito aberto.` | Cada chamada recusada (Debug para não inundar o log na queda) |
+| `vault.circuit.state_changes` | Contador (`long`) | `{change}` | `vault.provider`, `vault.circuit.state` = `open`, `half_open` ou `closed` | Toda mudança de estado do circuit breaker ([🔁 Resiliência](resiliencia.md)); chamadas recusadas aparecem em `vault.operation.duration` com `error.type` = `VAULT_CIRCUITO_ABERTO` |
+| `CircuitStateChangesName` | `const string` | `"vault.circuit.state_changes"` | Contador de mudanças de estado do circuit breaker |
 [🏠 TEC.Vault](../README.md) › [📚 Documentação](README.md) › 📈 Observabilidade
 
 # 📈 Observabilidade

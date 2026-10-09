@@ -58,6 +58,13 @@ public sealed class VaultSettings
             ? value
             : (int?)null);
 
+    /// <summary>Número decimal (ponto como separador) dentro de [<paramref name="min"/>, <paramref name="max"/>].</summary>
+    public double? GetDouble(string key, double min = double.MinValue, double max = double.MaxValue) => Parse(key, $"número entre {min.ToString(CultureInfo.InvariantCulture)} e {max.ToString(CultureInfo.InvariantCulture)}",
+        text => double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) && double.IsFinite(value) &&
+                value >= min && value <= max
+            ? value
+            : (double?)null);
+
     /// <summary>Intervalo no formato <c>[d.]hh:mm:ss</c>, maior que zero.</summary>
     public TimeSpan? GetTimeSpan(string key) => Parse(key, "intervalo [d.]hh:mm:ss maior que zero",
         static text => TimeSpan.TryParse(text, CultureInfo.InvariantCulture, out var value) && value > TimeSpan.Zero

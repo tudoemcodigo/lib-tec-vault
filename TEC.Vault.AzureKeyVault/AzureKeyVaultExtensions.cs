@@ -105,7 +105,8 @@ public static class AzureKeyVaultCatalogExtensions
     /// Adiciona o Azure Key Vault aos provedores disponíveis. Opções lidas de <c>Vault:AzureKeyVault</c>: <c>VaultUri</c>
     /// (obrigatório), <c>Authentication</c> (<c>ManagedIdentity</c>, <c>WorkloadIdentity</c>, <c>Developer</c>),
     /// <c>ManagedIdentityClientId</c>, <c>TenantId</c>, <c>MaxRetries</c>, <c>MaxListItems</c>, <c>NetworkTimeout</c>, <c>OperationTimeout</c> e
-    /// <c>CryptographyClientLifetime</c>. As famílias vêm da escolha (<c>Vault:Provider</c> e overrides), não de <c>Stores</c>.
+    /// <c>CryptographyClientLifetime</c>, além da subseção <c>CircuitBreaker</c> (<c>Enabled</c>, <c>FailureRatio</c>,
+    /// <c>MinimumThroughput</c>, <c>SamplingDuration</c>, <c>BreakDuration</c>). As famílias vêm da escolha (<c>Vault:Provider</c> e overrides), não de <c>Stores</c>.
     /// </summary>
     /// <remarks>
     /// <paramref name="configure"/> roda depois da leitura da configuração, para o que só existe em código: <c>Credential</c>,
@@ -142,6 +143,7 @@ public static class AzureKeyVaultCatalogExtensions
         options.NetworkTimeout = settings.GetTimeSpan("NetworkTimeout") ?? options.NetworkTimeout;
         options.OperationTimeout = settings.GetTimeSpan("OperationTimeout") ?? options.OperationTimeout;
         options.CryptographyClientLifetime = settings.GetTimeSpan("CryptographyClientLifetime") ?? options.CryptographyClientLifetime;
+        options.CircuitBreaker.Read(settings);
         settings.EnsureNoUnknownKeys();
     }
 }

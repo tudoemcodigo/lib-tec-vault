@@ -1,3 +1,4 @@
+| `Http.CircuitBreaker` | `VaultCircuitBreakerOptions` | ligado | `CircuitBreaker:*` | Circuit breaker do cofre, compartilhado pelos stores do mesmo cliente ([🔁 Resiliência](resiliencia.md)) |
 [🏠 TEC.Vault](../README.md) › [📚 Documentação](README.md) › 🏛️ Provedor HashiCorp Vault
 
 # 🏛️ Provedor HashiCorp Vault

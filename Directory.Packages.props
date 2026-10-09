@@ -29,6 +29,7 @@
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
+    <PackageVersion Include="Polly.Core" Version="8.8.0" />
     <PackageVersion Include="TUnit" Version="1.73.5" />
   </ItemGroup>
 </Project>

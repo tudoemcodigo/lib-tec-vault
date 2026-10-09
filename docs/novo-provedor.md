@@ -1,3 +1,4 @@
+| `CircuitBreaker` | `VaultCircuitBreakerOptions` | ligado (50%, 10 chamadas, 30 s, 30 s) | Ver [🔁 Resiliência](resiliencia.md); crie um `VaultCircuitBreaker` por cofre com `VaultCircuitBreaker.Create(...)` e passe ao construtor da base |
 [🏠 TEC.Vault](../README.md) › [📚 Documentação](README.md) › 🧱 Novo provedor
 
 # 🧱 Novo provedor

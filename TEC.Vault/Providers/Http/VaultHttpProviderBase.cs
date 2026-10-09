@@ -19,7 +19,11 @@ namespace TEC.Vault.Providers.Http;
 public abstract class VaultHttpProviderBase : VaultProviderBase
 {
     /// <summary>Cria a base.</summary>
-    protected VaultHttpProviderBase(string providerName, ILogger logger) : base(providerName, logger)
+    /// <param name="providerName">Nome do provedor.</param>
+    /// <param name="logger">Logger do provedor.</param>
+    /// <param name="circuitBreaker">Circuit breaker do cofre (<see cref="VaultHttpSettings.CircuitBreaker"/>); <c>null</c> = desligado.</param>
+    protected VaultHttpProviderBase(string providerName, ILogger logger, VaultCircuitBreaker? circuitBreaker = null)
+        : base(providerName, logger, circuitBreaker)
     {
     }
 

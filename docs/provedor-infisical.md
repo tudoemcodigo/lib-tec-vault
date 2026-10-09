@@ -1,3 +1,4 @@
+| `Http.CircuitBreaker` | ✅ `CircuitBreaker:*` | ligado | Circuit breaker do cofre ([🔁 Resiliência](resiliencia.md)) |
 [🏠 TEC.Vault](../README.md) › [📚 Documentação](README.md) › 🟣 Provedor Infisical
 
 # 🟣 Provedor Infisical

@@ -1,3 +1,4 @@
+| `CircuitBreaker` | `VaultCircuitBreakerOptions` | ligado | `CircuitBreaker:*` | Circuit breaker do cofre, compartilhado por segredos, chaves e certificados ([🔁 Resiliência](resiliencia.md)) |
 [🏠 TEC.Vault](../README.md) › [📚 Documentação](README.md) › 🌐 Provedor Azure Key Vault
 
 # 🌐 Provedor Azure Key Vault

@@ -1,3 +1,4 @@
+| [🔁 Resiliência](docs/resiliencia.md) | Retentativa e circuit breaker: o que abre o circuito, opções e telemetria |
 <div align="center">
 
 <img src="Images/Logo.png" alt="TEC.Vault" width="120" />

@@ -45,6 +45,19 @@ internal static partial class VaultLog
         "Health check do cofre sem nenhuma verificação: nenhum store registrado oferece uma operação de verificação (ex.: só IKeyCryptography sem IVaultHealthProbe). O check responde saudável sem consultar o cofre.")]
     public static partial void HealthCheckWithoutChecks(ILogger logger);
 
+    [LoggerMessage(2011, LogLevel.Warning,
+        "Cofre {Provider}: circuito aberto após falhas repetidas; chamadas recusadas por {BreakSeconds} s sem consultar o cofre.")]
+    public static partial void CircuitOpened(ILogger logger, string provider, double breakSeconds);
+
+    [LoggerMessage(2012, LogLevel.Information, "Cofre {Provider}: circuito meio-aberto; testando o cofre com uma chamada.")]
+    public static partial void CircuitHalfOpened(ILogger logger, string provider);
+
+    [LoggerMessage(2013, LogLevel.Information, "Cofre {Provider}: circuito fechado; o cofre voltou a responder.")]
+    public static partial void CircuitClosed(ILogger logger, string provider);
+
+    [LoggerMessage(2014, LogLevel.Debug, "Cofre {Provider}: {Operation} de '{ItemName}' recusada com o circuito aberto.")]
+    public static partial void CircuitRejected(ILogger logger, string provider, string operation, string itemName);
+
     // ---------- Provedor de IConfiguration ----------
 
     [LoggerMessage(2100, LogLevel.Error, "Configuração do cofre ({Provider}): falha na carga inicial: {ErrorCode}.")]

@@ -1,3 +1,6 @@
+| `CircuitBreaker:Enabled` · `FailureRatio` · `MinimumThroughput` · `SamplingDuration` · `BreakDuration` | booleano · 0 a 1 · 2 a 10.000 · intervalo | `Http.CircuitBreaker.*` ([🔁 Resiliência](resiliencia.md)) |
+| `CircuitBreaker:Enabled` · `FailureRatio` · `MinimumThroughput` · `SamplingDuration` · `BreakDuration` | booleano · 0 a 1 · 2 a 10.000 · intervalo | `Http.CircuitBreaker.*` ([🔁 Resiliência](resiliencia.md)) |
+| `CircuitBreaker:Enabled` · `FailureRatio` · `MinimumThroughput` · `SamplingDuration` · `BreakDuration` | booleano · 0 a 1 · 2 a 10.000 · intervalo | `CircuitBreaker.*` ([🔁 Resiliência](resiliencia.md)) |
 [🏠 TEC.Vault](../README.md) › [📚 Documentação](README.md) › ⚙️ Escolha do cofre pela configuração
 
 # ⚙️ Escolha do cofre pela configuração

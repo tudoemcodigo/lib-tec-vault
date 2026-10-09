@@ -61,7 +61,7 @@ public sealed partial class InfisicalSecretStore : VaultHttpProviderBase, ISecre
     /// <summary>Cria o store. As opções são validadas aqui (falha na inicialização, não na primeira requisição).</summary>
     /// <exception cref="InvalidOperationException">Opções inválidas.</exception>
     public InfisicalSecretStore(InfisicalOptions options, ILogger<InfisicalSecretStore>? logger = null)
-        : base(Provider, logger ?? (ILogger)NullLogger.Instance)
+        : base(Provider, logger ?? (ILogger)NullLogger.Instance, CreateCircuitBreaker(options))
     {
         ArgumentNullException.ThrowIfNull(options);
         var (site, path) = options.Validate();
@@ -74,6 +74,10 @@ public sealed partial class InfisicalSecretStore : VaultHttpProviderBase, ISecre
         _tokens = new VaultTokenSource(ct => LoginAsync(credential, ct), _time);
         _http = new VaultHttpClient(site, options.Http, _tokens);
     }
+
+    private static VaultCircuitBreaker? CreateCircuitBreaker(InfisicalOptions? options) => options is null
+        ? null
+        : VaultCircuitBreaker.Create(Provider, options.Http.CircuitBreaker, options.TimeProvider, "InfisicalOptions.Http.CircuitBreaker");
 
     [GeneratedRegex(@"^[0-9a-zA-Z_][0-9a-zA-Z._-]{0,254}\z", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 100)]
     private static partial Regex NamePattern();

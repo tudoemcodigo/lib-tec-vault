@@ -39,16 +39,22 @@ public abstract class VaultProviderBase
     internal const string CanceledErrorType = "canceled";
 
     private readonly ILogger _logger;
+    private readonly VaultCircuitBreaker? _circuitBreaker;
 
     /// <summary>Cria a base.</summary>
     /// <param name="providerName">Nome do provedor (ex.: "AzureKeyVault").</param>
     /// <param name="logger">Logger do provedor.</param>
-    protected VaultProviderBase(string providerName, ILogger logger)
+    /// <param name="circuitBreaker">
+    /// Circuit breaker do cofre (o mesmo para todos os stores que falam com ele); <c>null</c> = sem circuit breaker (ex.: provedores
+    /// locais, sem rede).
+    /// </param>
+    protected VaultProviderBase(string providerName, ILogger logger, VaultCircuitBreaker? circuitBreaker = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(providerName);
         ArgumentNullException.ThrowIfNull(logger);
         ProviderName = providerName;
         _logger = logger;
+        _circuitBreaker = circuitBreaker;
     }
 
     /// <summary>Nome do provedor.</summary>
@@ -87,12 +93,13 @@ public abstract class VaultProviderBase
         activity?.SetTag("vault.operation", operation);
         long start = Stopwatch.GetTimestamp();
 
-        Result<T> result;
-        string detail;
+        Attempt<T>? attempt;
         try
         {
-            result = await action(cancellationToken).ConfigureAwait(false);
-            detail = result.IsSuccess ? string.Empty : "validação do provedor";
+            attempt = _circuitBreaker is null
+                ? await InvokeAsync(action, operation, item, cancellationToken).ConfigureAwait(false)
+                : await _circuitBreaker.ExecuteAsync(ct => InvokeAsync(action, operation, item, ct), _logger, cancellationToken)
+                    .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -101,22 +108,25 @@ public abstract class VaultProviderBase
             VaultDiagnostics.RecordOperation(ProviderName, operation, Stopwatch.GetElapsedTime(start).TotalSeconds, CanceledErrorType);
             throw;
         }
-        catch (Exception ex)
-        {
-            var mapped = ex is VaultListLimitExceededException limit
-                ? new VaultFailure(VaultErrors.TooManyItems(), $"listagem acima de {limit.MaxItems} itens")
-                : MapException(ex);
-            if (mapped is null)
-            {
-                var error = VaultErrors.ProviderFailure();
-                VaultLog.UnexpectedException(_logger, ex, ProviderName, operation, item, ex.GetType().Name, error.Code);
-                Complete(activity, error);
-                VaultDiagnostics.RecordOperation(ProviderName, operation, Stopwatch.GetElapsedTime(start).TotalSeconds, error.Code);
-                return Result<T>.Failure(error);
-            }
 
-            result = Result<T>.Failure(mapped.Value.Error);
-            detail = mapped.Value.Detail;
+        if (attempt is null)
+        {
+            // Circuito aberto: recusada sem consultar o cofre (o log de cada recusa fica em Debug para não inundar o log na queda)
+            var error = VaultErrors.CircuitOpen();
+            VaultLog.CircuitRejected(_logger, ProviderName, operation, item);
+            Complete(activity, error);
+            VaultDiagnostics.RecordOperation(ProviderName, operation, Stopwatch.GetElapsedTime(start).TotalSeconds, error.Code);
+            return Result<T>.Failure(error);
+        }
+
+        var result = attempt.Result;
+        var detail = attempt.Detail;
+        if (attempt.Unexpected)
+        {
+            // Já registrada com a pilha em InvokeAsync
+            Complete(activity, result.Error);
+            VaultDiagnostics.RecordOperation(ProviderName, operation, Stopwatch.GetElapsedTime(start).TotalSeconds, result.Error!.Code);
+            return result;
         }
 
         var elapsedTime = Stopwatch.GetElapsedTime(start);
@@ -143,6 +153,47 @@ public abstract class VaultProviderBase
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Chama o provedor e converte exceções em <see cref="Result{T}"/> (o circuit breaker precisa ver a falha já classificada).
+    /// Cancelamento pedido pelo chamador é propagado.
+    /// </summary>
+    private async Task<Attempt<T>> InvokeAsync<T>(Func<CancellationToken, Task<Result<T>>> action, string operation, string item,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await action(cancellationToken).ConfigureAwait(false);
+            return new Attempt<T>(result, result.IsSuccess ? string.Empty : "validação do provedor", Unexpected: false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            var mapped = ex is VaultListLimitExceededException limit
+                ? new VaultFailure(VaultErrors.TooManyItems(), $"listagem acima de {limit.MaxItems} itens")
+                : MapException(ex);
+            if (mapped is null)
+            {
+                var error = VaultErrors.ProviderFailure();
+                VaultLog.UnexpectedException(_logger, ex, ProviderName, operation, item, ex.GetType().Name, error.Code);
+                return new Attempt<T>(Result<T>.Failure(error), string.Empty, Unexpected: true);
+            }
+
+            return new Attempt<T>(Result<T>.Failure(mapped.Value.Error), mapped.Value.Detail, Unexpected: false);
+        }
+    }
+
+    /// <summary>Resultado de uma chamada ao provedor, com o detalhe para log.</summary>
+    /// <param name="Result">Resultado já convertido.</param>
+    /// <param name="Detail">Detalhe seguro para log.</param>
+    /// <param name="Unexpected">Exceção não reconhecida pelo provedor (já registrada com a pilha).</param>
+    private sealed record Attempt<T>(Result<T> Result, string Detail, bool Unexpected) : IVaultOutcome
+    {
+        public Error? Error => Result.Error;
     }
 
     /// <summary>Executa uma operação sem retorno.</summary>

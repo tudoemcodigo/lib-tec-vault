@@ -1,6 +1,7 @@
 using Azure.Core;
 using Microsoft.Extensions.Hosting;
 using TEC.Vault.DependencyInjection;
+using TEC.Vault.Providers;
 
 namespace TEC.Vault.AzureKeyVault;
 
@@ -73,6 +74,12 @@ public sealed class AzureKeyVaultOptions
 
     /// <summary>Timeout de cada tentativa de rede. Padrão: 30 segundos.</summary>
     public TimeSpan NetworkTimeout { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Circuit breaker do cofre (ligado por padrão): com o cofre fora do ar, as chamadas falham na hora com
+    /// <c>VAULT_CIRCUITO_ABERTO</c> em vez de esperar timeout e retentativas. Configuração: <c>Vault:AzureKeyVault:CircuitBreaker</c>.
+    /// </summary>
+    public VaultCircuitBreakerOptions CircuitBreaker { get; } = new();
 
     /// <summary>Tempo máximo de espera por operações longas (exclusão, recuperação, emissão de certificado). Padrão: 5 minutos.</summary>
     public TimeSpan OperationTimeout { get; set; } = TimeSpan.FromMinutes(5);

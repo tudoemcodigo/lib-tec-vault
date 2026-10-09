@@ -40,7 +40,7 @@ public static class InfisicalExtensions
     /// (<c>UniversalAuth</c>, <c>Kubernetes</c>, <c>AccessToken</c>), <c>ClientId</c>, <c>ClientSecretFile</c>,
     /// <c>ClientSecretVariable</c>, <c>IdentityId</c>, <c>ServiceAccountTokenFile</c>, <c>OrganizationSlug</c>,
     /// <c>AccessTokenFile</c>, <c>AccessTokenVariable</c>, <c>ExpandSecretReferences</c>, <c>IncludeImports</c>,
-    /// <c>MaxRetries</c> e <c>NetworkTimeout</c>.
+    /// <c>MaxRetries</c>, <c>NetworkTimeout</c> e a subseção <c>CircuitBreaker</c>.
     /// </summary>
     /// <remarks>
     /// <c>ClientSecret</c> e <c>AccessToken</c> em texto são recusados: a credencial vem de arquivo ou variável de ambiente.
@@ -86,6 +86,7 @@ public static class InfisicalExtensions
         options.IncludeImports = settings.GetBoolean("IncludeImports") ?? options.IncludeImports;
         options.Http.MaxRetries = settings.GetInt32("MaxRetries", 0, 10) ?? options.Http.MaxRetries;
         options.Http.NetworkTimeout = settings.GetTimeSpan("NetworkTimeout") ?? options.Http.NetworkTimeout;
+        options.Http.CircuitBreaker.Read(settings);
         settings.EnsureNoUnknownKeys();
     }
 }

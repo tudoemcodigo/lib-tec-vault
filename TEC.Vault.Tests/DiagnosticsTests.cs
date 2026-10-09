@@ -66,7 +66,7 @@ public class DiagnosticsTests
         await Assert.That(durations.Any(m => Equals(m.Tags.GetValueOrDefault("error.type"), VaultErrors.InvalidInputCode))).IsTrue();
 
         // Segurança: só dimensões de baixa cardinalidade; o nome do item nunca vai para a métrica
-        var allowed = new[] { "vault.provider", "vault.operation", "error.type", "vault.cache.result" };
+        var allowed = new[] { "vault.provider", "vault.operation", "error.type", "vault.cache.result", "vault.circuit.state" };
         await Assert.That(capture.Measurements.All(m => m.Tags.Keys.All(allowed.Contains))).IsTrue();
         await Assert.That(capture.Measurements.Any(m => m.Tags.Values.Any(v => v is string s && s.Contains(name, StringComparison.Ordinal)))).IsFalse();
     }

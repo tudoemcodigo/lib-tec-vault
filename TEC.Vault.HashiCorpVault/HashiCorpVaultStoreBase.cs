@@ -36,8 +36,9 @@ public abstract partial class HashiCorpVaultStoreBase : VaultHttpProviderBase, I
     private readonly bool _ownsClient;
 
     private protected HashiCorpVaultStoreBase(HashiCorpVaultClient client, bool ownsClient, ILogger? logger)
-        : base(Provider, logger ?? NullLogger.Instance)
+        : base(Provider, logger ?? NullLogger.Instance, client?.CircuitBreaker)
     {
+        ArgumentNullException.ThrowIfNull(client);
         Client = client;
         _ownsClient = ownsClient;
     }
