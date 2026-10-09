@@ -2,7 +2,7 @@
 
 Todas as mudanças relevantes do **TEC.Vault** são registradas aqui. O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o projeto usa [Versionamento Semântico](https://semver.org/lang/pt-BR/). Enquanto a versão for `0.x`, mudanças incompatíveis podem ocorrer em versões MINOR. Os seis pacotes saem sempre com a mesma versão.
 
-## [0.0.1] - não publicado
+## [0.0.1] - 2026-10-08
 
 Primeira versão. Nada foi publicado ainda: esta entrada descreve o que os pacotes oferecem.
 
