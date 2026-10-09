@@ -31,6 +31,12 @@ public sealed class VaultHttpSettings
     /// <summary>Relógio (esperas entre tentativas). Padrão: <see cref="TimeProvider.System"/>.</summary>
     public TimeProvider? TimeProvider { get; set; }
 
+    /// <summary>
+    /// Circuit breaker do cofre (ligado por padrão): com o cofre fora do ar, as chamadas falham na hora com
+    /// <c>VAULT_CIRCUITO_ABERTO</c> em vez de esperar timeout e retentativas. Configuração: subseção <c>CircuitBreaker</c> do provedor.
+    /// </summary>
+    public VaultCircuitBreakerOptions CircuitBreaker { get; } = new();
+
     /// <summary>Confere os limites.</summary>
     /// <param name="optionPrefix">Prefixo do nome da opção nas mensagens (ex.: "HashiCorpVaultOptions").</param>
     /// <exception cref="InvalidOperationException">Valor fora do limite.</exception>
@@ -44,6 +50,7 @@ public sealed class VaultHttpSettings
             throw new InvalidOperationException($"{optionPrefix}.MaxRetryDelay deve estar entre zero e 5 minutos.");
         if (MaxResponseBytes is < 1024 or > 64 * 1024 * 1024)
             throw new InvalidOperationException($"{optionPrefix}.MaxResponseBytes deve estar entre 1 KB e 64 MB.");
+        CircuitBreaker.Validate($"{optionPrefix}.CircuitBreaker");
     }
 }
 

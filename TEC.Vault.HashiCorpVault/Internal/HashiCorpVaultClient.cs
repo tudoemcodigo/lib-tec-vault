@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using TEC.Core.Text.Codecs;
+using TEC.Vault.Providers;
 using TEC.Vault.Providers.Http;
 
 namespace TEC.Vault.HashiCorpVault.Internal;
@@ -60,6 +61,8 @@ internal sealed class HashiCorpVaultClient : IDisposable
         Options = options;
         Time = options.TimeProvider ?? TimeProvider.System;
         _credential = options.Auth.Credential();
+        CircuitBreaker = VaultCircuitBreaker.Create(HashiCorpVaultStoreBase.Provider, options.Http.CircuitBreaker, Time,
+            "HashiCorpVaultOptions.Http.CircuitBreaker");
 
         _login = new VaultHttpClient(address, options.Http);
         _tokens = new VaultTokenSource(LoginAsync, Time);
@@ -75,6 +78,9 @@ internal sealed class HashiCorpVaultClient : IDisposable
     internal HashiCorpVaultOptions Options { get; }
 
     internal TimeProvider Time { get; }
+
+    /// <summary>Circuit breaker do cofre (compartilhado pelos stores deste cliente); <c>null</c> = desligado.</summary>
+    internal VaultCircuitBreaker? CircuitBreaker { get; }
 
     /// <summary>Pasta dos segredos no KV.</summary>
     internal KvFolder Secrets { get; }

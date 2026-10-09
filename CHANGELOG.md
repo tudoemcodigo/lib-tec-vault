@@ -2,6 +2,22 @@
 
 Todas as mudanças relevantes do **TEC.Vault** são registradas aqui. O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o projeto usa [Versionamento Semântico](https://semver.org/lang/pt-BR/). Enquanto a versão for `0.x`, mudanças incompatíveis podem ocorrer em versões MINOR. Os seis pacotes saem sempre com a mesma versão.
 
+## [0.1.0] - 2026-10-09
+
+### ✨ Adicionado
+
+#### 🔐 TEC.Vault
+
+- **Circuit breaker por cofre** (`VaultCircuitBreaker`, `VaultCircuitBreakerOptions`, com `Polly.Core`), ligado por padrão nos provedores de rede (Azure Key Vault, HashiCorp Vault, Infisical) e por fora das retentativas que já existiam. Abre com falhas repetidas de `VAULT_INDISPONIVEL`/`VAULT_LIMITE_EXCEDIDO` e recusa as chamadas seguintes com o novo erro `VAULT_CIRCUITO_ABERTO`, sem consultar o cofre. Um circuito por cofre, compartilhado por segredos, chaves e certificados. Na chamada de teste (meia-abertura) só uma resposta do cofre fecha o circuito: cancelamento ou `VAULT_FALHA` o reabrem.
+- Subseção `CircuitBreaker` (`Enabled`, `FailureRatio`, `MinimumThroughput`, `SamplingDuration`, `BreakDuration`) na configuração de cada provedor, com validação estrita; `AzureKeyVaultOptions.CircuitBreaker` e `VaultHttpSettings.CircuitBreaker` em código.
+- Métrica `vault.circuit.state_changes` e eventos de log 2011–2014. `VaultSettings.GetDouble` para provedores.
+- Documentação: [🔁 Resiliência](docs/resiliencia.md).
+
+### 🔁 Alterado
+
+- Construtores de `VaultProviderBase` e `VaultHttpProviderBase` aceitam o `VaultCircuitBreaker` do cofre (parâmetro opcional).
+- Nova dependência: `Polly.Core` 8.8.0 (sem dependências próprias em net8/net10, compatível com Native AOT).
+
 ## [0.0.1] - 2026-10-08
 
 Primeira versão. Nada foi publicado ainda: esta entrada descreve o que os pacotes oferecem.

@@ -1,3 +1,5 @@
+| `CircuitBreaker` (`FailureRatio`, `MinimumThroughput`, `SamplingDuration`, `BreakDuration`) | `AzureKeyVaultOptions.CircuitBreaker`, `Http.CircuitBreaker` (`Vault:<Provedor>:CircuitBreaker`) | `VAULT_CIRCUITO_ABERTO` ([🔁 Resiliência](resiliencia.md)) |
+| `CircuitOpenCode` | `VAULT_CIRCUITO_ABERTO` | ExternalService | 502 🔒 | Circuit breaker aberto: o cofre falhou repetidas vezes (`VAULT_INDISPONIVEL`/`VAULT_LIMITE_EXCEDIDO`) e a chamada foi recusada sem consultá-lo | Aguarde a volta do cofre; veja os eventos 2011-2013 e [🔁 Resiliência](resiliencia.md) |
 [🏠 TEC.Vault](../README.md) › [📚 Documentação](README.md) › ❌ Erros
 
 # ❌ Erros

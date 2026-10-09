@@ -28,6 +28,8 @@ internal sealed partial class AzureKeyVaultClients
         CryptographyClientLifetime = options.CryptographyClientLifetime;
         Time = options.TimeProvider ?? TimeProvider.System;
         var credential = CreateCredential(options);
+        CircuitBreaker = VaultCircuitBreaker.Create(AzureKeyVaultStoreBase.Provider, options.CircuitBreaker, Time,
+            "AzureKeyVaultOptions.CircuitBreaker");
 
         Secrets = new SecretClient(VaultUri, credential, Configure(new SecretClientOptions(), options));
         Keys = new KeyClient(VaultUri, credential, Configure(new KeyClientOptions(), options));
@@ -43,6 +45,9 @@ internal sealed partial class AzureKeyVaultClients
     public TimeSpan CryptographyClientLifetime { get; }
 
     public TimeProvider Time { get; }
+
+    /// <summary>Circuit breaker do cofre (compartilhado pelos três stores); <c>null</c> = desligado.</summary>
+    public VaultCircuitBreaker? CircuitBreaker { get; }
 
     public SecretClient Secrets { get; }
 
@@ -96,6 +101,7 @@ internal sealed partial class AzureKeyVaultClients
                 "(ou AllowDeveloperCredentialsOutsideDevelopment para CI/ferramentas).");
         }
 
+        options.CircuitBreaker.Validate("AzureKeyVaultOptions.CircuitBreaker");
         VaultBuilder.EnsureValidStores(options.Stores, "AzureKeyVaultOptions.Stores");
 
         if (options.TenantId is not null && !Guid.TryParse(options.TenantId, out _))

@@ -34,6 +34,9 @@ public static class VaultDiagnostics
     /// <item><description><see cref="CacheRequestsName"/> (contador): leituras do cache de segredos, com <c>vault.provider</c> e
     /// <c>vault.cache.result</c> = <c>hit</c>, <c>miss</c> (consultou o cofre) ou <c>coalesced</c> (aguardou uma leitura
     /// simultânea da mesma chave).</description></item>
+    /// <item><description><see cref="CircuitStateChangesName"/> (contador): mudanças de estado do circuit breaker, com
+    /// <c>vault.provider</c> e <c>vault.circuit.state</c> = <c>open</c>, <c>half_open</c> ou <c>closed</c>. Chamadas recusadas com o
+    /// circuito aberto aparecem em <see cref="OperationDurationName"/> com <c>error.type</c> = <c>VAULT_CIRCUITO_ABERTO</c>.</description></item>
     /// </list>
     /// Exportado sem configuração pelo <c>AddTecObservability</c> do TEC.Observability (prefixo <c>TEC.*</c>).
     /// </summary>
@@ -45,10 +48,17 @@ public static class VaultDiagnostics
     /// <summary>Contador de leituras do cache de segredos.</summary>
     public const string CacheRequestsName = "vault.cache.requests";
 
+    /// <summary>Contador de mudanças de estado do circuit breaker.</summary>
+    public const string CircuitStateChangesName = "vault.circuit.state_changes";
+
     internal const string ProviderTag = "vault.provider";
     internal const string OperationTag = "vault.operation";
     internal const string ErrorTypeTag = "error.type";
     internal const string CacheResultTag = "vault.cache.result";
+    internal const string CircuitStateTag = "vault.circuit.state";
+    internal const string CircuitOpen = "open";
+    internal const string CircuitHalfOpen = "half_open";
+    internal const string CircuitClosed = "closed";
 
     internal static readonly ActivitySource ActivitySource = new(ActivitySourceName);
 
@@ -59,6 +69,9 @@ public static class VaultDiagnostics
 
     internal static readonly Counter<long> CacheRequests = Meter.CreateCounter<long>(
         CacheRequestsName, unit: "{request}", description: "Leituras do cache de segredos por resultado.");
+
+    internal static readonly Counter<long> CircuitStateChanges = Meter.CreateCounter<long>(
+        CircuitStateChangesName, unit: "{change}", description: "Mudanças de estado do circuit breaker do cofre.");
 
     /// <summary>Registra a duração de uma operação. <paramref name="errorType"/> só em falha.</summary>
     internal static void RecordOperation(string provider, string operation, double seconds, string? errorType)
@@ -81,5 +94,12 @@ public static class VaultDiagnostics
     {
         if (CacheRequests.Enabled)
             CacheRequests.Add(1, new KeyValuePair<string, object?>(ProviderTag, provider), new KeyValuePair<string, object?>(CacheResultTag, result));
+    }
+
+    /// <summary>Registra uma mudança de estado do circuito (<c>open</c>, <c>half_open</c> ou <c>closed</c>).</summary>
+    internal static void RecordCircuitState(string provider, string state)
+    {
+        if (CircuitStateChanges.Enabled)
+            CircuitStateChanges.Add(1, new KeyValuePair<string, object?>(ProviderTag, provider), new KeyValuePair<string, object?>(CircuitStateTag, state));
     }
 }

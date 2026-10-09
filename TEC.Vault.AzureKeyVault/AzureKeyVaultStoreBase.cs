@@ -32,7 +32,7 @@ public abstract partial class AzureKeyVaultStoreBase : VaultProviderBase
     internal const string NameRule = "use de 1 a 127 caracteres: letras, números e hífen.";
 
     private protected AzureKeyVaultStoreBase(AzureKeyVaultClients clients, ILogger? logger)
-        : base(Provider, logger ?? NullLogger.Instance)
+        : base(Provider, logger ?? NullLogger.Instance, clients?.CircuitBreaker)
     {
         ArgumentNullException.ThrowIfNull(clients);
         Clients = clients;

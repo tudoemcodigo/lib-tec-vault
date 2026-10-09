@@ -1,3 +1,4 @@
+| 15 | [🔁 Resiliência](resiliencia.md) | Retentativa e circuit breaker: quando o circuito abre, opções e sinais de telemetria |
 [🏠 TEC.Vault](../README.md) › 📚 Documentação
 
 # 📚 Documentação do TEC.Vault
@@ -30,10 +31,10 @@
 | 12 | [🧠 Provedor em memória](provedor-em-memoria.md) | Cofre local para desenvolvimento e testes, diferenças de um cofre real e trava de ambiente |
 | 13 | [🧱 Novo provedor](novo-provedor.md) | Como escrever um provedor: `VaultProviderBase`, regras comuns, base HTTP, catálogo de configuração, testes de contrato |
 | 14 | [📈 Observabilidade](observabilidade.md) | Spans, métricas e eventos de log (nunca com valores nem nomes de item nas métricas) |
-| 15 | [❌ Erros](erros.md) | Códigos de `VaultErrors`, tipo e HTTP, conversão por provedor e exceções de configuração |
-| 16 | [🛡️ Segurança](seguranca.md) | Modelo de ameaças, controles, limites contra DoS, riscos residuais e checklist do cofre |
-| 17 | [🧪 Testes](testes.md) | Categorias, como rodar local, integração (HashiCorp e Key Vault), carga e variáveis `TEC_TESTES_*`/`TEC_CARGA_*` |
-| 18 | [💻 Desenvolvimento local](desenvolvimento.md) | Como compilar (feed `tec-interno` por padrão, repositórios vizinhos sob demanda), lock files e o HashiCorp Vault local |
+| 16 | [❌ Erros](erros.md) | Códigos de `VaultErrors`, tipo e HTTP, conversão por provedor e exceções de configuração |
+| 17 | [🛡️ Segurança](seguranca.md) | Modelo de ameaças, controles, limites contra DoS, riscos residuais e checklist do cofre |
+| 18 | [🧪 Testes](testes.md) | Categorias, como rodar local, integração (HashiCorp e Key Vault), carga e variáveis `TEC_TESTES_*`/`TEC_CARGA_*` |
+| 19 | [💻 Desenvolvimento local](desenvolvimento.md) | Como compilar (feed `tec-interno` por padrão, repositórios vizinhos sob demanda), lock files e o HashiCorp Vault local |
 
 Fora de `docs/`: [🧰 Samples](../samples/README.md) · [⚙️ CI/CD](../.github/workflows/README.md) · [📝 Changelog](../CHANGELOG.md) · READMEs dos pacotes ([TEC.Vault](../TEC.Vault/README.md), [AzureKeyVault](../TEC.Vault.AzureKeyVault/README.md), [HashiCorpVault](../TEC.Vault.HashiCorpVault/README.md), [Infisical](../TEC.Vault.Infisical/README.md), [Synced](../TEC.Vault.Synced/README.md), [InMemory](../TEC.Vault.InMemory/README.md)).
 
@@ -55,7 +56,7 @@ flowchart TD
     P -->|"entregue por um agente<br/>ESO, CSI, Vault Agent, bws"| SYN["📂 provedor-synced.md"]
     P -->|"local ou testes"| MEM["🧠 provedor-em-memoria.md"]
     P -->|outro| NOVO["🧱 novo-provedor.md"]
-    R -.-> OPS["💾 cache-e-health-check.md<br/>📈 observabilidade.md<br/>❌ erros.md"]
+    R -.-> OPS["💾 cache-e-health-check.md<br/>📈 observabilidade.md<br/>🔁 resiliencia.md<br/>❌ erros.md"]
     OPS -.-> SEG["🛡️ seguranca.md"]
     NOVO -.-> TST["🧪 testes.md<br/>💻 desenvolvimento.md"]
 ```

@@ -26,7 +26,8 @@ public class FuzzTests
     [
         VaultErrors.InvalidInputCode, VaultErrors.NotFoundCode, VaultErrors.ConflictCode, VaultErrors.DisabledCode,
         VaultErrors.NotExportableCode, VaultErrors.RejectedCode, VaultErrors.AccessDeniedCode, VaultErrors.AuthenticationFailedCode,
-        VaultErrors.ThrottledCode, VaultErrors.UnavailableCode, VaultErrors.NotSupportedCode, VaultErrors.ProviderFailureCode
+        VaultErrors.ThrottledCode, VaultErrors.UnavailableCode, VaultErrors.NotSupportedCode, VaultErrors.ProviderFailureCode,
+        VaultErrors.CircuitOpenCode
     ];
 
     [Test]

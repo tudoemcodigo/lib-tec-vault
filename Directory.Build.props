@@ -3,7 +3,7 @@
   <!-- Identidade do componente; as convenções comuns (alvos, análise, segurança, AOT, metadados NuGet) vêm do build/ -->
   <PropertyGroup>
     <TecComponent>TEC.Vault</TecComponent>
-    <Version>0.0.1</Version>
+    <Version>0.1.0</Version>
   </PropertyGroup>
 
   <Import Project="build/Tec.Build.props" />

@@ -51,7 +51,7 @@ public static class HashiCorpVaultExtensions
     /// Adiciona o HashiCorp Vault aos provedores disponíveis para a configuração (<c>Vault:Provider = HashiCorpVault</c>).
     /// Opções lidas de <c>Vault:HashiCorpVault</c>:
     /// <list type="bullet">
-    /// <item><description><c>Address</c> (obrigatório), <c>Namespace</c>, <c>MaxRetries</c>, <c>NetworkTimeout</c>, <c>MaxListItems</c>.</description></item>
+    /// <item><description><c>Address</c> (obrigatório), <c>Namespace</c>, <c>MaxRetries</c>, <c>NetworkTimeout</c>, <c>MaxListItems</c>, subseção <c>CircuitBreaker</c>.</description></item>
     /// <item><description><c>Auth</c>: <c>Method</c> (<c>Kubernetes</c>, <c>Jwt</c>, <c>AppRole</c>, <c>Token</c>), <c>Mount</c>, <c>Role</c>,
     /// <c>RoleId</c>, <c>ServiceAccountTokenFile</c>, <c>JwtFile</c>, <c>JwtVariable</c>, <c>SecretIdFile</c>, <c>SecretIdVariable</c>,
     /// <c>TokenFile</c>, <c>TokenVariable</c>.</description></item>
@@ -94,6 +94,7 @@ public static class HashiCorpVaultExtensions
         options.Namespace = settings.GetString("Namespace") ?? options.Namespace;
         options.Http.MaxRetries = settings.GetInt32("MaxRetries", 0, 10) ?? options.Http.MaxRetries;
         options.Http.NetworkTimeout = settings.GetTimeSpan("NetworkTimeout") ?? options.Http.NetworkTimeout;
+        options.Http.CircuitBreaker.Read(settings);
         options.MaxListItems = settings.GetInt32("MaxListItems", 1, 1_000_000) ?? options.MaxListItems;
 
         var auth = settings.GetSection("Auth");

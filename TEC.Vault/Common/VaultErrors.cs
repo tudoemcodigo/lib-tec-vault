@@ -43,6 +43,12 @@ public static class VaultErrors
     /// <summary>Código: cofre indisponível (rede, timeout, erro 5xx).</summary>
     public const string UnavailableCode = "VAULT_INDISPONIVEL";
 
+    /// <summary>
+    /// Código: circuito aberto. O cofre falhou repetidas vezes (indisponível ou limitando requisições) e as chamadas são recusadas
+    /// sem consultá-lo até o fim da pausa (<see cref="Providers.VaultCircuitBreakerOptions"/>).
+    /// </summary>
+    public const string CircuitOpenCode = "VAULT_CIRCUITO_ABERTO";
+
     /// <summary>Código: operação não suportada pelo provedor.</summary>
     public const string NotSupportedCode = "VAULT_OPERACAO_NAO_SUPORTADA";
 
@@ -99,6 +105,10 @@ public static class VaultErrors
 
     /// <summary>Cofre indisponível (oculto do cliente).</summary>
     public static Error Unavailable() => Error.ExternalService(UnavailableCode, "O cofre está indisponível no momento.");
+
+    /// <summary>Circuito aberto: chamada recusada sem consultar o cofre (oculto do cliente).</summary>
+    public static Error CircuitOpen() =>
+        Error.ExternalService(CircuitOpenCode, "O cofre está indisponível no momento (falhas repetidas; nova tentativa em instantes).");
 
     /// <summary>Operação não suportada pelo provedor (HTTP 500).</summary>
     public static Error NotSupported() => Error.Failure(NotSupportedCode, "Operação não suportada pelo provedor de cofre configurado.");
