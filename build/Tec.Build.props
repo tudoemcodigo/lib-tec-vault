@@ -91,7 +91,6 @@
     <PackageProjectUrl>https://www.tudoemcodigo.com</PackageProjectUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageIcon>Logo.png</PackageIcon>
-    <PackageIconUrl>https://www.tudoemcodigo.com/marca/PNG/tudoemcodigo-icone-512.png</PackageIconUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryType>git</RepositoryType>
     <RepositoryUrl>https://github.com/tudoemcodigo/lib-$(TecComponent.ToLowerInvariant().Replace('.', '-'))</RepositoryUrl>
