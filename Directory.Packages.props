@@ -1,0 +1,35 @@
+<Project>
+
+  <!--
+    Central Package Management: a versão de cada pacote é declarada uma única vez, aqui.
+  -->
+
+  <!--
+    Componentes TEC.* consumidos: versão PUBLICADA no feed tec-interno (todos os pacotes de um componente têm a mesma
+    versão). No csproj use <TecReference Include="TEC.X" />, sem versão: vira PackageReference nesta versão, na máquina
+    e no CI; o projeto vizinho só entra com -p:TecUseLocalProjects=true (build/Tec.Build.targets).
+  -->
+  <ItemGroup>
+    <PackageVersion Include="TEC.Core" Version="0.0.1" />
+  </ItemGroup>
+
+  <!-- Terceiros -->
+  <ItemGroup>
+    <PackageVersion Include="Azure.Identity" Version="1.21.0" />
+    <PackageVersion Include="Azure.Security.KeyVault.Certificates" Version="4.9.2" />
+    <PackageVersion Include="Azure.Security.KeyVault.Keys" Version="4.10.2" />
+    <PackageVersion Include="Azure.Security.KeyVault.Secrets" Version="4.11.2" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
+    <PackageVersion Include="Polly.Core" Version="8.8.0" />
+    <PackageVersion Include="TUnit" Version="1.74.0" />
+  </ItemGroup>
+</Project>

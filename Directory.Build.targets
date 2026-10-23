@@ -1,0 +1,6 @@
+<Project>
+
+  <!-- ARQUIVO CANÔNICO: mantido em tudoemcodigo/tec-workflows (template). Não edite no componente. -->
+  <Import Project="build/Tec.Build.targets" />
+
+</Project>

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Configurações de build, segurança e metadados comuns: ..\Directory.Build.props -->
+
+  <PropertyGroup>
+    <RootNamespace>TEC.Vault.Synced</RootNamespace>
+    <Description>Lê segredos que um agente externo já entregou à aplicação (arquivos montados, variáveis de ambiente, arquivo JSON ou .env): funciona com qualquer cofre sincronizado por External Secrets, Vault Agent, CSI driver, infisical run ou bws run, sem SDK de terceiros.</Description>
+    <PackageTags>vault;secrets;kubernetes;external-secrets;csi;dotenv;tec</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TEC.Vault\TEC.Vault.csproj" />
+  </ItemGroup>
+
+</Project>
