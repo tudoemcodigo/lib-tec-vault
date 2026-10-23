@@ -20,7 +20,7 @@ Todo método assíncrono retorna `Result`/`Result<T>` do [TEC.Core](https://gith
 
 | Situação | Instale |
 |---|---|
-| Aplicação que lê ou grava segredos | Um provedor (ele traz este pacote junto): `TEC.Vault.AzureKeyVault`, `TEC.Vault.HashiCorpVault`, `TEC.Vault.Infisical`, `TEC.Vault.Synced` ou `TEC.Vault.InMemory` |
+| Aplicação que lê ou grava segredos | Um provedor (ele traz este pacote junto): `TEC.Vault.AzureKeyVault`, `TEC.Vault.AwsSecretsManager`, `TEC.Vault.GoogleSecretManager`, `TEC.Vault.HashiCorpVault`, `TEC.Vault.Infisical`, `TEC.Vault.Synced` ou `TEC.Vault.InMemory` |
 | Biblioteca que só recebe `ISecretReader`/`IKeyCryptography` por injeção | Só `TEC.Vault` |
 | Escrever um provedor para outro cofre | Só `TEC.Vault` ([guia](https://github.com/tudoemcodigo/lib-tec-vault/blob/main/docs/novo-provedor.md)) |
 

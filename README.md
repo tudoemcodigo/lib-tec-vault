@@ -59,14 +59,16 @@ Azure Key Vault · HashiCorp Vault/OpenBao · AWS Secrets Manager · Google Secr
 
 | Pacote | Para que serve | Quando instalar | Depende de |
 |---|---|---|---|
-| [`TEC.Vault`](TEC.Vault/README.md) | Interfaces, modelos, `VaultErrors`, validação, auditoria, métricas, cache, `IConfiguration`, health check, envelope, escolha por configuração e base para provedores | Vem com qualquer provedor; sozinho só para escrever um provedor ou uma biblioteca que recebe `ISecretReader` | `TEC.Core`, `Microsoft.Extensions.*` (sem SDK de nuvem) |
+| [`TEC.Vault`](TEC.Vault/README.md) | Interfaces, modelos, `VaultErrors`, validação, auditoria, métricas, cache, `IConfiguration`, health check, envelope, provedor encadeado, escolha por configuração e base para provedores | Vem com qualquer provedor; sozinho só para escrever um provedor ou uma biblioteca que recebe `ISecretReader` | `TEC.Core`, `Microsoft.Extensions.*` (sem SDK de nuvem) |
 | [`TEC.Vault.AzureKeyVault`](TEC.Vault.AzureKeyVault/README.md) | Azure Key Vault: segredos, chaves e certificados, autenticação sem segredo | Aplicações no Azure | `TEC.Vault`, `Azure.Identity`, `Azure.Security.KeyVault.*` |
+| [`TEC.Vault.AwsSecretsManager`](TEC.Vault.AwsSecretsManager/README.md) | AWS Secrets Manager: leitura, gravação, metadados e versionamento nativo HTTP com SigV4 (sem SDK pesado, 100% Native AOT) | Aplicações na AWS (ECS, EKS, Lambda, EC2) ou multi-cloud | `TEC.Vault` (HTTP SigV4, sem SDK) |
+| [`TEC.Vault.GoogleSecretManager`](TEC.Vault.GoogleSecretManager/README.md) | Google Cloud Secret Manager: leitura, gravação, destruição de versões e metadados via API REST v1 nativa (Service Account JSON ou Metadata Server GKE/Cloud Run, 100% Native AOT) | Aplicações no Google Cloud (GKE, Cloud Run, GCE) ou multi-cloud | `TEC.Vault` (HTTP REST v1, sem SDK) |
 | [`TEC.Vault.HashiCorpVault`](TEC.Vault.HashiCorpVault/README.md) | HashiCorp Vault e OpenBao: KV v2 com lixeira, Transit, certificados com PKI; login Kubernetes, JWT, AppRole ou token | HashiCorp Vault/OpenBao (on-premises, Kubernetes, HCP) | `TEC.Vault` (HTTP, sem SDK) |
 | [`TEC.Vault.Infisical`](TEC.Vault.Infisical/README.md) | Infisical (nuvem ou self-hosted): leitura e gravação de segredos | Aplicações que leem e gravam no Infisical pela API | `TEC.Vault` (HTTP, sem SDK) |
 | [`TEC.Vault.Synced`](TEC.Vault.Synced/README.md) | Segredos já entregues por um agente: pasta montada, variáveis de ambiente, arquivo JSON/.env (só leitura) | External Secrets, CSI driver, Vault Agent, `infisical run`, `bws run` (Bitwarden) | `TEC.Vault` |
 | [`TEC.Vault.InMemory`](TEC.Vault.InMemory/README.md) | Cofre em memória com o mesmo comportamento dos reais | Desenvolvimento local e testes (bloqueado fora de Development) | `TEC.Vault` |
 
-Os seis pacotes saem sempre com a mesma versão e trazem `lib/net8.0` e `lib/net10.0`, a documentação XML em português e um README próprio.
+Os oito pacotes saem sempre com a mesma versão e trazem `lib/net8.0` e `lib/net10.0`, a documentação XML em português e um README próprio.
 
 ## 🧬 Ecossistema TEC
 
@@ -107,6 +109,8 @@ Os pacotes estão no **GitHub Packages** da organização `tudoemcodigo`, que se
 dotnet nuget add source https://nuget.pkg.github.com/tudoemcodigo/index.json -n tec-interno -u <usuario> -p <PAT>
 
 dotnet add package TEC.Vault.AzureKeyVault --version 0.0.1
+dotnet add package TEC.Vault.AwsSecretsManager --version 0.0.1
+dotnet add package TEC.Vault.GoogleSecretManager --version 0.0.1
 dotnet add package TEC.Vault.HashiCorpVault --version 0.0.1
 dotnet add package TEC.Vault.Infisical --version 0.0.1
 dotnet add package TEC.Vault.Synced --version 0.0.1
@@ -183,10 +187,13 @@ flowchart LR
     C --> B
     SEL["Vault:Provider<br/>catálogo de provedores"] -. escolhe .-> B
     B --> AZ["AzureKeyVault"] --> KV[("Azure Key Vault")]
+    B --> AWS["AwsSecretsManager"] --> ASM[("AWS Secrets Manager")]
+    B --> GCP["GoogleSecretManager"] --> GSM[("Google Secret Manager")]
     B --> HC["HashiCorpVault"] --> HV[("HashiCorp Vault<br/>OpenBao")]
     B --> INF["Infisical"] --> IS[("Infisical")]
-    B --> SYN["Synced"]
-    AGT["Agente externo<br/>ESO · CSI · Vault Agent · bws"] --> SYN
+    B --> CHN["ChainedSecrets"] --> FB["Fallback em Camadas"]
+    B --> SYN["Synced / Variáveis"]
+    AGT["Agente externo / Variáveis<br/>ESO · CSI · Vault Agent · bws · env"] --> SYN
     B --> MEM["InMemory"]
 ```
 
@@ -227,6 +234,7 @@ flowchart LR
 | [☁️ AWS Secrets Manager](docs/provedor-aws-secrets-manager.md) | SigV4 nativo, JSON protocol 1.1 sem SDK, credenciais de ambiente ou STS/IRSA |
 | [🔷 Google Secret Manager](docs/provedor-google-secret-manager.md) | API REST v1 nativa, Service Account JSON, Google Metadata Server (GKE, Cloud Run) |
 | [🔗 Provedor Encadeado](docs/provedor-encadeado.md) | Fallback ordenado multicamadas (ex.: variáveis de ambiente para cofre remoto) |
+| [🌐 Segredos em Variáveis de Ambiente](docs/segredos-em-variaveis-de-ambiente.md) | Guia dedicado para segredos em variáveis de ambiente, normalização de nomes, isolamento de escopo e fallback |
 | [📂 Synced](docs/provedor-synced.md) | Pasta, variáveis e arquivo entregues por agentes, com receitas (ESO, CSI, Vault Agent, `bws run`) |
 | [🧠 Em memória](docs/provedor-em-memoria.md) | Cofre local para desenvolvimento e testes, e a trava de ambiente |
 | [🧱 Novo provedor](docs/novo-provedor.md) | Como escrever um provedor (`VaultProviderBase`, base HTTP, catálogo, testes de contrato) |
@@ -269,7 +277,7 @@ dotnet test --project TEC.Vault.LoadTests -c Release --treenode-filter "/*/*/*/*
 
 Para a integração com HashiCorp Vault, suba um container descartável na porta **18200** e prepare-o com `.github/scripts/vault-dev.sh` (passo a passo em [docs/testes.md](docs/testes.md)).
 
-595 testes unitários por TFM em `TEC.Vault.Tests` (TUnit, com testes de contrato, fuzzing e vazamento sob carga), 37 de integração (`[Category=Integracao]`: HashiCorp Vault real em container e Key Vault de testes, pulados com motivo sem ambiente), 7 de carga rápida (`Carga-CI`) e 13 pesados (`Carga-Pesada`), estes de carga só sob demanda no `performance.yml` (manual: tempo em runner compartilhado é ruidoso e não bloqueia PR nem versão). Detalhes em [docs/testes.md](docs/testes.md).
+659 testes unitários por TFM em `TEC.Vault.Tests` (TUnit, com testes de contrato, fuzzing e vazamento sob carga), 37 de integração (`[Category=Integracao]`: HashiCorp Vault real em container e Key Vault de testes, pulados com motivo sem ambiente), 7 de carga rápida (`Carga-CI`) e 13 pesados (`Carga-Pesada`), estes de carga só sob demanda no `performance.yml` (manual: tempo em runner compartilhado é ruidoso e não bloqueia PR nem versão). Detalhes em [docs/testes.md](docs/testes.md).
 
 ## 🤝 Contribuição
 
@@ -277,7 +285,7 @@ Branch a partir da `main` → código **e** testes (inclusive entradas inválida
 
 ## 🏷️ Versionamento
 
-[SemVer](https://semver.org/lang/pt-BR/), uma versão para os seis pacotes (`Directory.Build.props`). Enquanto for `0.x`, mudanças incompatíveis podem ocorrer em versões MINOR; um membro novo em interface conta como incompatível (quebra provedores de terceiros). Cada merge na `main` publica a prévia `<Version>-preview.N`; versões estáveis e `-rc.N` saem só pelo workflow **Publicar versão** ([CI/CD](.github/workflows/README.md)).
+[SemVer](https://semver.org/lang/pt-BR/), uma versão para os oito pacotes (`Directory.Build.props`). Enquanto for `0.x`, mudanças incompatíveis podem ocorrer em versões MINOR; um membro novo em interface conta como incompatível (quebra provedores de terceiros). Cada merge na `main` publica a prévia `<Version>-preview.N`; versões estáveis e `-rc.N` saem só pelo workflow **Publicar versão** ([CI/CD](.github/workflows/README.md)).
 
 ## 📄 Licença
 

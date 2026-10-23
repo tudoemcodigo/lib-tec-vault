@@ -62,9 +62,12 @@ classDiagram
 | Provedor | `ISecretReader` | `ISecretStore` | `ISecretRecycleBin` | `ISecretBackup` |
 |---|:-:|:-:|:-:|:-:|
 | [Azure Key Vault](provedor-azure-key-vault.md) | ✅ | ✅ | ✅ | ✅ |
+| [AWS Secrets Manager](provedor-aws-secrets-manager.md) | ✅ | ✅ | — | — |
+| [Google Secret Manager](provedor-google-secret-manager.md) | ✅ | ✅ | ✅ | — |
 | [HashiCorp Vault](provedor-hashicorp-vault.md) (KV v2) | ✅ | ✅ | ✅ | — |
 | [Infisical](provedor-infisical.md) | ✅ | ✅ | — | — |
-| [Synced](provedor-synced.md) (arquivos, variáveis, JSON/.env) | ✅ | — | — | — |
+| [Synced / Variáveis de Ambiente](provedor-synced.md) | ✅ | — | — | — |
+| [Provedor Encadeado (Multi-Camadas)](provedor-encadeado.md) | ✅ | — | — | — |
 | [Em memória](provedor-em-memoria.md) | ✅ | ✅ | ✅ | ✅ |
 
 > [!NOTE]

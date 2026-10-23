@@ -30,18 +30,19 @@
 | 12 | [🔷 Provedor Google Secret Manager](provedor-google-secret-manager.md) | API REST v1 nativa, Service Account JSON, Google Metadata Server (GKE, Cloud Run) |
 | 13 | [🔗 Provedor Encadeado](provedor-encadeado.md) | Fallback ordenado multicamadas (ex.: variáveis de ambiente para cofre remoto) |
 | 14 | [📂 Provedor Synced](provedor-synced.md) | Pasta, variáveis e arquivo JSON/.env entregues por agentes, com receitas (ESO, CSI, Vault Agent, `infisical run`, `bws run`) |
-| 15 | [🧠 Provedor em memória](provedor-em-memoria.md) | Cofre local para desenvolvimento e testes, diferenças de um cofre real e trava de ambiente |
-| 16 | [🧱 Novo provedor](novo-provedor.md) | Como escrever um provedor: `VaultProviderBase`, regras comuns, base HTTP, catálogo de configuração, testes de contrato |
-| 17 | [📈 Observabilidade](observabilidade.md) | Spans, métricas e eventos de log (nunca com valores nem nomes de item nas métricas) |
-| 18 | [🔁 Resiliência](resiliencia.md) | Retentativa e circuit breaker: quando o circuito abre, opções e sinais de telemetria |
-| 19 | [❌ Erros](erros.md) | Códigos de `VaultErrors`, tipo e HTTP, conversão por provedor e exceções de configuração |
-| 20 | [🛡️ Segurança](seguranca.md) | Modelo de ameaças, controles, limites contra DoS, riscos residuais e checklist do cofre |
-| 21 | [🧪 Testes](testes.md) | Categorias, como rodar local, integração (HashiCorp e Key Vault), carga e variáveis `TEC_TESTES_*`/`TEC_CARGA_*` |
-| 22 | [💻 Desenvolvimento local](desenvolvimento.md) | Como compilar (feed `tec-interno` por padrão, repositórios vizinhos sob demanda), lock files e o HashiCorp Vault local |
-| 23 | [🔎 Revisão técnica](revisao-tecnica.md) | Revisão de segurança, bugs e organização (2026-10-19): achados por severidade com `arquivo:linha`, correções e melhorias sugeridas |
-| 24 | [🏛️ Decisões Arquiteturais (ADRs)](adr/README.md) | Registros formais de decisões de arquitetura e engenharia do TEC.Vault |
+| 15 | [🌐 Segredos em Variáveis de Ambiente](segredos-em-variaveis-de-ambiente.md) | Guia dedicado para segredos em variáveis de ambiente, normalização de nomes, isolamento de escopo e fallback |
+| 16 | [🧠 Provedor em memória](provedor-em-memoria.md) | Cofre local para desenvolvimento e testes, diferenças de um cofre real e trava de ambiente |
+| 17 | [🧱 Novo provedor](novo-provedor.md) | Como escrever um provedor: `VaultProviderBase`, regras comuns, base HTTP, catálogo de configuração, testes de contrato |
+| 18 | [📈 Observabilidade](observabilidade.md) | Spans, métricas e eventos de log (nunca com valores nem nomes de item nas métricas) |
+| 19 | [🔁 Resiliência](resiliencia.md) | Retentativa e circuit breaker: quando o circuito abre, opções e sinais de telemetria |
+| 20 | [❌ Erros](erros.md) | Códigos de `VaultErrors`, tipo e HTTP, conversão por provedor e exceções de configuração |
+| 21 | [🛡️ Segurança](seguranca.md) | Modelo de ameaças, controles, limites contra DoS, riscos residuais e checklist do cofre |
+| 22 | [🧪 Testes](testes.md) | Categorias, como rodar local, integração (HashiCorp e Key Vault), carga e variáveis `TEC_TESTES_*`/`TEC_CARGA_*` |
+| 23 | [💻 Desenvolvimento local](desenvolvimento.md) | Como compilar (feed `tec-interno` por padrão, repositórios vizinhos sob demanda), lock files e o HashiCorp Vault local |
+| 24 | [🔎 Revisão técnica](revisao-tecnica.md) | Revisão de segurança, bugs e organização (2026-10-19): achados por severidade com `arquivo:linha`, correções e melhorias sugeridas |
+| 25 | [🏛️ Decisões Arquiteturais (ADRs)](adr/README.md) | Registros formais de decisões de arquitetura e engenharia do TEC.Vault |
 
-Fora de `docs/`: [🧰 Samples](../samples/README.md) · [⚙️ CI/CD](../.github/workflows/README.md) · [📝 Changelog](../CHANGELOG.md) · READMEs dos pacotes ([TEC.Vault](../TEC.Vault/README.md), [AzureKeyVault](../TEC.Vault.AzureKeyVault/README.md), [HashiCorpVault](../TEC.Vault.HashiCorpVault/README.md), [Infisical](../TEC.Vault.Infisical/README.md), [Synced](../TEC.Vault.Synced/README.md), [InMemory](../TEC.Vault.InMemory/README.md)).
+Fora de `docs/`: [🧰 Samples](../samples/README.md) · [⚙️ CI/CD](../.github/workflows/README.md) · [📝 Changelog](../CHANGELOG.md) · READMEs dos pacotes ([TEC.Vault](../TEC.Vault/README.md), [AzureKeyVault](../TEC.Vault.AzureKeyVault/README.md), [HashiCorpVault](../TEC.Vault.HashiCorpVault/README.md), [Infisical](../TEC.Vault.Infisical/README.md), [AwsSecretsManager](../TEC.Vault.AwsSecretsManager/README.md), [GoogleSecretManager](../TEC.Vault.GoogleSecretManager/README.md), [Synced](../TEC.Vault.Synced/README.md), [InMemory](../TEC.Vault.InMemory/README.md)).
 
 ---
 

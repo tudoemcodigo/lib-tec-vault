@@ -8,10 +8,6 @@
 
   <Import Project="build/Tec.Build.props" />
 
-  <PropertyGroup Condition="'$(IsTecPackage)' == 'true'">
-    <PackageIconUrl>https://www.tudoemcodigo.com/marca/PNG/tudoemcodigo-icone-512.png</PackageIconUrl>
-  </PropertyGroup>
-
   <!--
     Gerador de carga: o cofre simulado em HTTP usa o transporte interno de AzureKeyVaultOptions e o CachingSecretReader do
     núcleo. Só esses dois pacotes expõem os internos ao sample (os demais não).
