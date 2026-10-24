@@ -40,8 +40,8 @@ jobs:
       integration-tests: TEC.Vault.Tests /*/*/*/*[Category=Integracao]
       integration-setup: .github/scripts/integration-setup.sh
       integration-teardown: .github/scripts/integration-teardown.sh
-      azure-client-id: ${{ vars.AZURE_CLIENT_ID }}
-      azure-tenant-id: ${{ vars.TEC_TESTES_TENANT_ID }}
+      azure-client-id: ${{ vars.TEC_ENABLE_AZURE_INTEGRATION && vars.AZURE_CLIENT_ID || '' }}
+      azure-tenant-id: ${{ vars.TEC_ENABLE_AZURE_INTEGRATION && vars.TEC_TESTES_TENANT_ID || '' }}
       azure-env: |
         TEC_TESTES_VAULT_URI=${{ vars.TEC_TESTES_VAULT_URI }}
         TEC_TESTES_TENANT_ID=${{ vars.TEC_TESTES_TENANT_ID }}
