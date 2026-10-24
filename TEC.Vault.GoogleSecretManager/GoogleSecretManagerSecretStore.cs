@@ -29,6 +29,7 @@ public sealed partial class GoogleSecretManagerSecretStore : VaultHttpProviderBa
 
     private static readonly VaultProviderRules Rules = new(NamePattern(), "use de 1 a 255 caracteres: letras, números, hífen e sublinhado.")
     {
+        VersionPattern = VersionPattern(),
         MaxSecretValueBytes = MaxSecretValueBytes,
         MaxTags = 50,
         MaxTagKeyLength = 63,
@@ -55,7 +56,8 @@ public sealed partial class GoogleSecretManagerSecretStore : VaultHttpProviderBa
         var handler = options.Http.Handler ?? new SocketsHttpHandler
         {
             PooledConnectionLifetime = TimeSpan.FromMinutes(15),
-            EnableMultipleHttp2Connections = true
+            EnableMultipleHttp2Connections = true,
+            AllowAutoRedirect = false
         };
 
         _httpClient = new HttpClient(handler, disposeHandler: options.Http.Handler is null)
@@ -73,6 +75,9 @@ public sealed partial class GoogleSecretManagerSecretStore : VaultHttpProviderBa
 
     [GeneratedRegex(@"^[0-9a-zA-Z_-]{1,255}\z", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 100)]
     private static partial Regex NamePattern();
+
+    [GeneratedRegex(@"^(latest|[0-9]+)\z", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 100)]
+    private static partial Regex VersionPattern();
 
     // ---------- ISecretReader ----------
 
@@ -225,6 +230,9 @@ public sealed partial class GoogleSecretManagerSecretStore : VaultHttpProviderBa
     public Task<Result<SecretProperties>> SetSecretAsync(string name, string value, SecretWriteOptions? options = null, CancellationToken cancellationToken = default)
     {
         options ??= new SecretWriteOptions();
+        if (options.ContentType is not null || options.NotBefore is not null || options.ExpiresOn is not null)
+            return Task.FromResult(Result<SecretProperties>.Failure(VaultErrors.InvalidInput("options", "O Google Secret Manager não suporta tipo de conteúdo nem período de validade: informe apenas valor e tags.")));
+
         var inputError = Rules.SetSecret(name, value, options, _time.GetUtcNow());
 
         return ExecuteAsync("secret.set", name, inputError, isWrite: true, async ct =>
@@ -259,6 +267,13 @@ public sealed partial class GoogleSecretManagerSecretStore : VaultHttpProviderBa
                         writer.WriteStartObject("automatic");
                         writer.WriteEndObject();
                         writer.WriteEndObject();
+                        if (options.Tags is { Count: > 0 })
+                        {
+                            writer.WriteStartObject("labels");
+                            foreach (var (k, v) in options.Tags)
+                                writer.WriteString(k, v);
+                            writer.WriteEndObject();
+                        }
                         writer.WriteEndObject();
                     }
                     createBytes = buffer.ToArray();
@@ -289,17 +304,41 @@ public sealed partial class GoogleSecretManagerSecretStore : VaultHttpProviderBa
     public Task<Result<SecretProperties>> UpdateSecretPropertiesAsync(string name, SecretPropertiesUpdate update, string? version = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(update);
+        if (update.ContentType is not null || update.ExpiresOn is not null || update.NotBefore is not null)
+            return Task.FromResult(Result<SecretProperties>.Failure(VaultErrors.InvalidInput("update", "O Google Secret Manager não suporta tipo de conteúdo nem período de validade.")));
+
         var inputError = Rules.UpdateSecret(name, version, update, _time.GetUtcNow());
 
         return ExecuteAsync("secret.update", name, inputError, isWrite: true, async ct =>
         {
+            var targetVersion = string.IsNullOrWhiteSpace(version) ? "latest" : version;
+            if (update.Enabled is false)
+            {
+                var disablePath = $"v1/projects/{_projectId}/secrets/{name}/versions/{targetVersion}:disable";
+                var (dStatus, dBody) = await SendGcpRequestAsync(HttpMethod.Post, disablePath, null, ct).ConfigureAwait(false);
+                if (dStatus != HttpStatusCode.OK)
+                    return MapGcpError(dStatus, dBody);
+
+                return Result<SecretProperties>.Success(new SecretProperties { Name = name, Version = targetVersion, Enabled = false });
+            }
+
+            if (update.Enabled is true)
+            {
+                var enablePath = $"v1/projects/{_projectId}/secrets/{name}/versions/{targetVersion}:enable";
+                var (eStatus, eBody) = await SendGcpRequestAsync(HttpMethod.Post, enablePath, null, ct).ConfigureAwait(false);
+                if (eStatus != HttpStatusCode.OK)
+                    return MapGcpError(eStatus, eBody);
+
+                return Result<SecretProperties>.Success(new SecretProperties { Name = name, Version = targetVersion, Enabled = true });
+            }
+
             var path = $"v1/projects/{_projectId}/secrets/{name}";
             var (status, body) = await SendGcpRequestAsync(HttpMethod.Get, path, null, ct).ConfigureAwait(false);
 
             if (status != HttpStatusCode.OK)
                 return MapGcpError(status, body);
 
-            return Result<SecretProperties>.Success(new SecretProperties { Name = name, Version = version ?? "1", Enabled = true });
+            return Result<SecretProperties>.Success(new SecretProperties { Name = name, Version = targetVersion, Enabled = true });
         }, cancellationToken);
     }
 
@@ -310,7 +349,10 @@ public sealed partial class GoogleSecretManagerSecretStore : VaultHttpProviderBa
             var path = $"v1/projects/{_projectId}/secrets/{name}";
             var (status, body) = await SendGcpRequestAsync(HttpMethod.Delete, path, null, ct).ConfigureAwait(false);
 
-            if (status is HttpStatusCode.OK or HttpStatusCode.NotFound)
+            if (status == HttpStatusCode.NotFound)
+                return Result<DeletedVaultItem>.Failure(VaultErrors.NotFound());
+
+            if (status == HttpStatusCode.OK)
                 return Result<DeletedVaultItem>.Success(new DeletedVaultItem(name, _time.GetUtcNow(), ScheduledPurgeDate: null));
 
             return MapGcpError(status, body);

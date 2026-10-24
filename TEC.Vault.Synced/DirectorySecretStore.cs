@@ -107,29 +107,60 @@ public sealed class DirectorySecretStore : SyncedSecretStoreBase
             if (entry.Name.StartsWith('.') || entry is DirectoryInfo || !IsValidName(entry.Name))
                 continue;
 
-            var path = entry.FullName;
-            if (entry.LinkTarget is not null)
+            var resolvedPath = ResolveCanonicalPath(entry, rootPrefix);
+            if (resolvedPath is null)
             {
-                var target = entry.ResolveLinkTarget(returnFinalTarget: true);
-                if (target is null || !target.Exists || target is DirectoryInfo)
-                    continue;
-                path = System.IO.Path.GetFullPath(target.FullName);
-                if (!path.StartsWith(rootPrefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
-                {
-                    if (_logger is not null)
-                        SyncedLog.LinkOutsideFolderIgnored(_logger, entry.Name);
-                    continue;
-                }
+                if (_logger is not null)
+                    SyncedLog.LinkOutsideFolderIgnored(_logger, entry.Name);
+                continue;
             }
 
             if (!names.Add(entry.Name))
                 throw new SyncedFormatException($"nomes de arquivo repetidos sem diferenciar maiúsculas: {entry.Name}");
             if (files.Count == _options.MaxItems)
                 throw new SyncedFormatException($"a pasta tem mais de {_options.MaxItems} segredos (MaxItems)");
-            files.Add((entry.Name, path));
+            files.Add((entry.Name, resolvedPath));
         }
 
         return files;
+    }
+
+    private static string? ResolveCanonicalPath(FileSystemInfo entry, string rootPrefix)
+    {
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var path = entry.FullName;
+
+        if (entry.LinkTarget is not null)
+        {
+            var target = entry.ResolveLinkTarget(returnFinalTarget: true);
+            if (target is null || !target.Exists || target is DirectoryInfo)
+                return null;
+            path = System.IO.Path.GetFullPath(target.FullName);
+        }
+
+        var current = System.IO.Path.GetFullPath(path);
+        if (!current.StartsWith(rootPrefix, comparison))
+            return null;
+
+        var dir = new DirectoryInfo(System.IO.Path.GetDirectoryName(current) ?? string.Empty);
+        while (dir is not null && dir.Exists)
+        {
+            if (dir.LinkTarget is not null)
+            {
+                var dirTarget = dir.ResolveLinkTarget(returnFinalTarget: true);
+                if (dirTarget is not null)
+                {
+                    var resolvedDir = System.IO.Path.GetFullPath(dirTarget.FullName);
+                    if (!resolvedDir.StartsWith(rootPrefix, comparison) && !string.Equals(resolvedDir, rootPrefix.TrimEnd(System.IO.Path.DirectorySeparatorChar), comparison))
+                        return null;
+                }
+            }
+            if (string.Equals(dir.FullName, rootPrefix.TrimEnd(System.IO.Path.DirectorySeparatorChar), comparison))
+                break;
+            dir = dir.Parent;
+        }
+
+        return current;
     }
 
     private SyncedEntry Read(string name, string path)

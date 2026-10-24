@@ -15,6 +15,7 @@ internal sealed class GoogleTokenSource
     private readonly HttpClient _authClient;
     private readonly TimeProvider _time;
     private readonly Lock _lock = new();
+    private readonly SemaphoreSlim _semaphore = new(1, 1);
 
     private string? _cachedToken;
     private DateTimeOffset _expiresAt = DateTimeOffset.MinValue;
@@ -44,29 +45,44 @@ internal sealed class GoogleTokenSource
                 return _cachedToken;
         }
 
-        // 3. Service Account JSON
-        var jsonContent = GetServiceAccountJson();
-        if (jsonContent is not null)
+        await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            var token = await AcquireTokenFromServiceAccountAsync(jsonContent, cancellationToken).ConfigureAwait(false);
-            return token;
-        }
-
-        // 4. Servidor de Metadados GCP (Compute Engine, Cloud Run, GKE)
-        if (_options.UseMetadataServer)
-        {
-            try
+            now = _time.GetUtcNow();
+            lock (_lock)
             {
-                var token = await AcquireTokenFromMetadataServerAsync(cancellationToken).ConfigureAwait(false);
+                if (_cachedToken is not null && _expiresAt > now.AddMinutes(1))
+                    return _cachedToken;
+            }
+
+            // 3. Service Account JSON
+            var jsonContent = GetServiceAccountJson();
+            if (jsonContent is not null)
+            {
+                var token = await AcquireTokenFromServiceAccountAsync(jsonContent, cancellationToken).ConfigureAwait(false);
                 return token;
             }
-            catch
-            {
-                // Cai para fallback ou falha
-            }
-        }
 
-        throw new InvalidOperationException("Nenhuma credencial do Google Cloud foi configurada (AccessToken, GOOGLE_APPLICATION_CREDENTIALS ou Metadata Server).");
+            // 4. Servidor de Metadados GCP (Compute Engine, Cloud Run, GKE)
+            if (_options.UseMetadataServer)
+            {
+                try
+                {
+                    var token = await AcquireTokenFromMetadataServerAsync(cancellationToken).ConfigureAwait(false);
+                    return token;
+                }
+                catch
+                {
+                    // Cai para fallback ou falha
+                }
+            }
+
+            throw new InvalidOperationException("Nenhuma credencial do Google Cloud foi configurada (AccessToken, GOOGLE_APPLICATION_CREDENTIALS ou Metadata Server).");
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     private string? GetServiceAccountJson()
@@ -76,7 +92,13 @@ internal sealed class GoogleTokenSource
             return varContent;
 
         if (!string.IsNullOrWhiteSpace(_options.CredentialsJsonFile) && File.Exists(_options.CredentialsJsonFile))
+        {
+            var fileInfo = new FileInfo(_options.CredentialsJsonFile);
+            if (fileInfo.Length > 1024 * 1024)
+                throw new InvalidOperationException("O arquivo de credenciais do Google excede o limite de 1 MB.");
+
             return File.ReadAllText(_options.CredentialsJsonFile);
+        }
 
         return null;
     }
@@ -104,7 +126,23 @@ internal sealed class GoogleTokenSource
         var responseContent = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException($"Falha na autenticação OAuth2 do Google Cloud: {response.StatusCode} - {responseContent}");
+        {
+            var errorDetail = response.StatusCode.ToString();
+            try
+            {
+                using var errDoc = JsonDocument.Parse(responseContent);
+                if (errDoc.RootElement.TryGetProperty("error_description", out var desc))
+                    errorDetail += $": {desc.GetString()}";
+                else if (errDoc.RootElement.TryGetProperty("error", out var err))
+                    errorDetail += $": {err.GetString()}";
+            }
+            catch
+            {
+                // Corpo não-JSON mantido fora da mensagem por segurança
+            }
+
+            throw new InvalidOperationException($"Falha na autenticação OAuth2 do Google Cloud ({errorDetail}).");
+        }
 
         using var resDoc = JsonDocument.Parse(responseContent);
         var resRoot = resDoc.RootElement;

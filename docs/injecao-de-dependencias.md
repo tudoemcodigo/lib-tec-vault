@@ -22,7 +22,7 @@
 flowchart TD
     A["services.AddTecVault(vault => ...)<br/>escolha em código"] --> B["VaultBuilder"]
     CFG["services.AddTecVault(section, providers)<br/>escolha pela configuração"] -. "chama os UseXxx escolhidos" .-> B
-    B --> P["UseAzureKeyVault · UseHashiCorpVault · UseInfisical<br/>UseDirectory · UseEnvironmentVariables · UseSecretsFile · UseInMemory<br/>ou UseSecretStore · UseKeyStore · UseCertificateStore"]
+    B --> P["UseAzureKeyVault · UseHashiCorpVault · UseInfisical · UseAwsSecretsManager · UseGoogleSecretManager<br/>UseDirectory · UseEnvironmentVariables · UseSecretsFile · UseInMemory · UseChainedSecrets<br/>ou UseSecretStore · UseKeyStore · UseCertificateStore"]
     P --> S["Classe do provedor<br/>singleton, uma instância"]
     S --> R1["ISecretReader · ISecretStore<br/>ISecretRecycleBin · ISecretBackup"]
     S --> R2["IKeyReader · IKeyStore · IKeyCryptography<br/>IKeyRecycleBin · IKeyBackup"]
@@ -166,13 +166,14 @@ O que é registrado (igual nas duas sobrecargas):
 
 > `TEC.Vault.DependencyInjection` · `sealed class` · pacote `TEC.Vault`
 
-As aplicações usam as extensões dos pacotes de provedor (`UseAzureKeyVault`, `UseHashiCorpVault`, `UseInfisical`, `UseDirectory`, `UseEnvironmentVariables`, `UseSecretsFile`, `UseInMemory`) e `EnableSecretCache`. Os demais membros são para quem escreve provedores.
+As aplicações usam as extensões dos pacotes de provedor (`UseAzureKeyVault`, `UseHashiCorpVault`, `UseInfisical`, `UseAwsSecretsManager`, `UseGoogleSecretManager`, `UseDirectory`, `UseEnvironmentVariables`, `UseSecretsFile`, `UseInMemory`), `UseChainedSecrets` e `EnableSecretCache`. Os demais membros são para quem escreve provedores.
 
 | Membro | Retorno | Descrição |
 |---|---|---|
 | `Services` | `IServiceCollection` | Container, para o provedor registrar as suas dependências |
 | `UseSecretStore<T>()` | `VaultBuilder` | Provedor de segredos por tipo (`T : class, ISecretReader`; construtor público preservado para AOT) |
 | `UseSecretStore<T>(Func<IServiceProvider, T> factory)` | `VaultBuilder` | Provedor de segredos por fábrica (permite construtor interno) |
+| `UseChainedSecrets(params Func<IServiceProvider, ISecretReader>[] readers)` | `VaultBuilder` | Provedor de segredos em camadas (fallback): consulta as fábricas na ordem; exige ao menos uma ([📘 Provedor Encadeado](provedor-encadeado.md)) |
 | `UseKeyStore<T>()` / `UseKeyStore<T>(factory)` | `VaultBuilder` | Provedor de chaves; `T` precisa implementar `IKeyReader` e/ou `IKeyCryptography` |
 | `UseCertificateStore<T>()` / `UseCertificateStore<T>(factory)` | `VaultBuilder` | Provedor de certificados (`T : class, ICertificateReader`) |
 | `UseStores<TSecrets, TKeys, TCertificates>(VaultStores stores, secrets, keys, certificates)` | `VaultBuilder` | Registra de uma vez as famílias marcadas em `stores` (provedores com opção `Stores`) |
@@ -204,6 +205,9 @@ O `AddTecVault` em si não tem opções: cada provedor tem a sua classe de opç�
 | Azure Key Vault | `UseAzureKeyVault` | `AzureKeyVaultOptions` | [🌐 Provedor Azure Key Vault](provedor-azure-key-vault.md) |
 | HashiCorp Vault / OpenBao | `UseHashiCorpVault` | `HashiCorpVaultOptions` | [🏛️ Provedor HashiCorp Vault](provedor-hashicorp-vault.md) |
 | Infisical | `UseInfisical` | `InfisicalOptions` | [🟣 Provedor Infisical](provedor-infisical.md) |
+| AWS Secrets Manager | `UseAwsSecretsManager` | `AwsSecretsManagerOptions` | [☁️ Provedor AWS Secrets Manager](provedor-aws-secrets-manager.md) |
+| Google Secret Manager | `UseGoogleSecretManager` | `GoogleSecretManagerOptions` | [🔷 Provedor Google Secret Manager](provedor-google-secret-manager.md) |
+| Encadeado | `UseChainedSecrets` | — (recebe as fábricas dos leitores) | [🔗 Provedor Encadeado](provedor-encadeado.md) |
 | Synced | `UseDirectory` · `UseEnvironmentVariables` · `UseSecretsFile` | `DirectorySecretsOptions` · `EnvironmentSecretsOptions` · `SecretsFileOptions` | [📂 Provedor Synced](provedor-synced.md) |
 | Em memória | `UseInMemory` | `InMemoryVaultOptions` | [🧠 Provedor em memória](provedor-em-memoria.md) |
 | Cache | `EnableSecretCache(TimeSpan)` | duração | [💾 Cache e health check](cache-e-health-check.md) |

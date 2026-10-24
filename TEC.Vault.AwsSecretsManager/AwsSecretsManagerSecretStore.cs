@@ -30,6 +30,7 @@ public sealed partial class AwsSecretsManagerSecretStore : VaultHttpProviderBase
 
     private static readonly VaultProviderRules Rules = new(NamePattern(), "use letras, números, hífen, sublinhado e barra (/ ou _ ou -).")
     {
+        VersionPattern = VersionPattern(),
         MaxSecretValueBytes = MaxSecretValueBytes,
         MaxTags = 50,
         MaxTagKeyLength = 128,
@@ -63,7 +64,8 @@ public sealed partial class AwsSecretsManagerSecretStore : VaultHttpProviderBase
         var handler = options.Http.Handler ?? new SocketsHttpHandler
         {
             PooledConnectionLifetime = TimeSpan.FromMinutes(15),
-            EnableMultipleHttp2Connections = true
+            EnableMultipleHttp2Connections = true,
+            AllowAutoRedirect = false
         };
 
         _httpClient = new HttpClient(handler, disposeHandler: options.Http.Handler is null)
@@ -79,6 +81,9 @@ public sealed partial class AwsSecretsManagerSecretStore : VaultHttpProviderBase
 
     [GeneratedRegex(@"^[0-9a-zA-Z/_+=.@-]{1,512}\z", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 100)]
     private static partial Regex NamePattern();
+
+    [GeneratedRegex(@"^[0-9a-zA-Z_-]{1,64}\z", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 100)]
+    private static partial Regex VersionPattern();
 
     // ---------- ISecretReader ----------
 
@@ -277,6 +282,9 @@ public sealed partial class AwsSecretsManagerSecretStore : VaultHttpProviderBase
     public Task<Result<SecretProperties>> SetSecretAsync(string name, string value, SecretWriteOptions? options = null, CancellationToken cancellationToken = default)
     {
         options ??= new SecretWriteOptions();
+        if (options.ContentType is not null || options.NotBefore is not null || options.ExpiresOn is not null)
+            return Task.FromResult(Result<SecretProperties>.Failure(VaultErrors.InvalidInput("options", "O AWS Secrets Manager não suporta tipo de conteúdo nem período de validade: informe apenas valor e tags.")));
+
         var inputError = Rules.SetSecret(name, value, options, _time.GetUtcNow());
 
         return ExecuteAsync("secret.set", name, inputError, isWrite: true, async ct =>
@@ -289,6 +297,18 @@ public sealed partial class AwsSecretsManagerSecretStore : VaultHttpProviderBase
                     writer.WriteStartObject();
                     writer.WriteString("Name", name);
                     writer.WriteString("SecretString", value);
+                    if (options.Tags is { Count: > 0 })
+                    {
+                        writer.WriteStartArray("Tags");
+                        foreach (var (k, v) in options.Tags)
+                        {
+                            writer.WriteStartObject();
+                            writer.WriteString("Key", k);
+                            writer.WriteString("Value", v);
+                            writer.WriteEndObject();
+                        }
+                        writer.WriteEndArray();
+                    }
                     writer.WriteEndObject();
                 }
                 createPayloadBytes = buffer.ToArray();
@@ -337,6 +357,9 @@ public sealed partial class AwsSecretsManagerSecretStore : VaultHttpProviderBase
     public Task<Result<SecretProperties>> UpdateSecretPropertiesAsync(string name, SecretPropertiesUpdate update, string? version = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(update);
+        if (update.ContentType is not null || update.Enabled is not null || update.ExpiresOn is not null || update.NotBefore is not null)
+            return Task.FromResult(Result<SecretProperties>.Failure(VaultErrors.InvalidInput("update", "O AWS Secrets Manager não suporta tipo de conteúdo, habilitar/desabilitar nem validade.")));
+
         var inputError = Rules.UpdateSecret(name, version, update, _time.GetUtcNow());
 
         return ExecuteAsync("secret.update", name, inputError, isWrite: true, async ct =>
@@ -373,15 +396,17 @@ public sealed partial class AwsSecretsManagerSecretStore : VaultHttpProviderBase
                 {
                     writer.WriteStartObject();
                     writer.WriteString("SecretId", name);
-                    writer.WriteBoolean("ForceDeleteWithoutRecovery", true);
                     writer.WriteEndObject();
                 }
                 payloadBytes = buffer.ToArray();
             }
 
             var (status, body) = await SendAwsRequestAsync("secretsmanager.DeleteSecret", payloadBytes, ct).ConfigureAwait(false);
-            if (status is HttpStatusCode.OK or HttpStatusCode.NotFound)
-                return Result<DeletedVaultItem>.Success(new DeletedVaultItem(name, _time.GetUtcNow(), ScheduledPurgeDate: null));
+            if (status == HttpStatusCode.NotFound)
+                return Result<DeletedVaultItem>.Failure(VaultErrors.NotFound());
+
+            if (status == HttpStatusCode.OK)
+                return Result<DeletedVaultItem>.Success(new DeletedVaultItem(name, _time.GetUtcNow(), ScheduledPurgeDate: _time.GetUtcNow().AddDays(30)));
 
             return MapAwsError(status, body);
         }, cancellationToken);

@@ -25,7 +25,7 @@
 | Vault Agent / Infisical Agent renderizando templates em arquivos | `Directory` (um arquivo por segredo) ou `SecretsFile` (um JSON/.env) |
 | Processo iniciado por `infisical run`, `bws run`, `op run` ou `envFrom` | `EnvironmentVariables` (prefixo obrigatório) |
 | Cofre sem provedor nativo no TEC.Vault (Bitwarden, 1Password, Doppler...) | Qualquer um dos três, conforme o que o agente grava |
-| A aplicação precisa **gravar**, rotacionar ou usar chaves/certificados | Um provedor nativo: [Azure Key Vault](provedor-azure-key-vault.md), [HashiCorp Vault](provedor-hashicorp-vault.md), [Infisical](provedor-infisical.md) |
+| A aplicação precisa **gravar**, rotacionar ou usar chaves/certificados | Um provedor nativo: [Azure Key Vault](provedor-azure-key-vault.md), [HashiCorp Vault](provedor-hashicorp-vault.md), [Infisical](provedor-infisical.md), [AWS Secrets Manager](provedor-aws-secrets-manager.md) ou [Google Secret Manager](provedor-google-secret-manager.md) (estes dois só para segredos) |
 
 Vantagem de segurança: a aplicação não guarda **nenhuma** credencial do cofre; o acesso fica no agente, com a identidade dele. Só leitura: quem grava é o agente.
 

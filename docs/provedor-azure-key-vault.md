@@ -1,4 +1,3 @@
-| `CircuitBreaker` | `VaultCircuitBreakerOptions` | ligado | `CircuitBreaker:*` | Circuit breaker do cofre, compartilhado por segredos, chaves e certificados ([🔁 Resiliência](resiliencia.md)) |
 [🏠 TEC.Vault](../README.md) › [📚 Documentação](README.md) › 🌐 Provedor Azure Key Vault
 
 # 🌐 Provedor Azure Key Vault
@@ -290,6 +289,7 @@ O checklist de configuração do cofre (RBAC, soft delete, proteção contra pur
 | `NetworkTimeout` | `TimeSpan` | `30 s` | `NetworkTimeout` | Tempo limite de cada tentativa; > 0 e ≤ 5 min |
 | `OperationTimeout` | `TimeSpan` | `5 min` | `OperationTimeout` | Espera por operações longas (exclusão, recuperação, emissão de certificado); > 0 e ≤ 30 min |
 | `MaxListItems` | `int` | `10.000` | `MaxListItems` | Máximo de itens de uma listagem (itens, versões e excluídos), de 1 a 1.000.000. Acima disso a paginação para e a operação devolve `VAULT_LISTAGEM_ACIMA_DO_LIMITE` |
+| `CircuitBreaker` | `VaultCircuitBreakerOptions` | ligado | `CircuitBreaker:*` | Circuit breaker do cofre, compartilhado por segredos, chaves e certificados ([🔁 Resiliência](resiliencia.md)) |
 | `CryptographyClientLifetime` | `TimeSpan` | `10 min` | `CryptographyClientLifetime` | Vida de cada cliente de criptografia reaproveitado; de `MinCryptographyClientLifetime` (1 min) a `MaxCryptographyClientLifetime` (24 h) |
 | `Stores` | `VaultStores` | `All` | — (vem de `Vault:Provider` e das escolhas por família) | Stores registrados por `UseAzureKeyVault`; ignorado em `AzureKeyVaultStores` |
 | `HostEnvironment` | `IHostEnvironment?` | `null` | — | Ambiente da trava do `Developer`; sem valor, o `IHostEnvironment` do container e, sem ele, `ASPNETCORE_ENVIRONMENT` (ou, se vazia, `DOTNET_ENVIRONMENT`) |
@@ -327,6 +327,7 @@ O checklist de configuração do cofre (RBAC, soft delete, proteção contra pur
 | HTTP 404 | `VAULT_ITEM_NAO_ENCONTRADO` |
 | HTTP 409 | `VAULT_CONFLITO` |
 | HTTP 429 | `VAULT_LIMITE_EXCEDIDO` |
+| Circuit breaker aberto (falhas repetidas de `VAULT_INDISPONIVEL`/`VAULT_LIMITE_EXCEDIDO`) | `VAULT_CIRCUITO_ABERTO`, sem consultar o cofre ([🔁 Resiliência](resiliencia.md)) |
 | HTTP 0 ou ≥ 500, `TimeoutException`, cancelamento interno (`OperationTimeout`), `IOException`, `HttpRequestException`, `SocketException` | `VAULT_INDISPONIVEL` |
 | `AggregateException` (retentativas esgotadas) | Conversão da última exceção; se desconhecida, `VAULT_INDISPONIVEL` |
 | `NotSupportedException` | `VAULT_OPERACAO_NAO_SUPORTADA` |

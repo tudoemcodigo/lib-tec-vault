@@ -1,9 +1,3 @@
-| 2011 | Warning | `Cofre {Provider}: circuito aberto após falhas repetidas; chamadas recusadas por {BreakSeconds} s...` | Circuit breaker abriu |
-| 2012 | Information | `Cofre {Provider}: circuito meio-aberto; testando o cofre com uma chamada.` | Fim da pausa |
-| 2013 | Information | `Cofre {Provider}: circuito fechado; o cofre voltou a responder.` | Chamada de teste com sucesso |
-| 2014 | Debug | `Cofre {Provider}: {Operation} de '{ItemName}' recusada com o circuito aberto.` | Cada chamada recusada (Debug para não inundar o log na queda) |
-| `vault.circuit.state_changes` | Contador (`long`) | `{change}` | `vault.provider`, `vault.circuit.state` = `open`, `half_open` ou `closed` | Toda mudança de estado do circuit breaker ([🔁 Resiliência](resiliencia.md)); chamadas recusadas aparecem em `vault.operation.duration` com `error.type` = `VAULT_CIRCUITO_ABERTO` |
-| `CircuitStateChangesName` | `const string` | `"vault.circuit.state_changes"` | Contador de mudanças de estado do circuit breaker |
 [🏠 TEC.Vault](../README.md) › [📚 Documentação](README.md) › 📈 Observabilidade
 
 # 📈 Observabilidade
@@ -29,7 +23,7 @@ Os sinais saem da base comum dos provedores (`VaultProviderBase`), então **todo
 ```mermaid
 flowchart LR
     OP["Operação do provedor"] --> ACT["Activity TEC.Vault<br/>sem nome de item"]
-    OP --> MET["Meter TEC.Vault<br/>duração e cache"]
+    OP --> MET["Meter TEC.Vault<br/>duração, cache e circuito"]
     OP --> LOG["ILogger<br/>auditoria com nome, nunca valor"]
     ACT --> OTEL["OpenTelemetry"]
     MET --> OTEL
@@ -108,6 +102,7 @@ sum(rate(vault_cache_requests_total{vault_cache_result="hit"}[5m])) / sum(rate(v
 | `MeterName` | `const string` | `"TEC.Vault"` | Nome do `Meter` |
 | `OperationDurationName` | `const string` | `"vault.operation.duration"` | Histograma de duração |
 | `CacheRequestsName` | `const string` | `"vault.cache.requests"` | Contador do cache de segredos |
+| `CircuitStateChangesName` | `const string` | `"vault.circuit.state_changes"` | Contador de mudanças de estado do circuit breaker |
 
 ### Traces
 
@@ -118,7 +113,7 @@ Cada operação que passa da validação de entrada gera uma `Activity`:
 | Fonte | `TEC.Vault` |
 | Nome | `Cofre <operação>` (ex.: `Cofre secret.get`, `Cofre key.sign`) |
 | Tipo | `Client` |
-| `vault.provider` | `AzureKeyVault`, `HashiCorpVault`, `Infisical`, `InMemory`... |
+| `vault.provider` | `AzureKeyVault`, `HashiCorpVault`, `Infisical`, `AwsSecretsManager`, `GoogleSecretManager`, `InMemory`... |
 | `vault.operation` | Ex.: `secret.get` (veja [nomes de operação](#nomes-de-operação)) |
 | `vault.success` | `true` / `false` |
 | `vault.error_code` | Código de `VaultErrors` (só em falha) |
@@ -133,6 +128,7 @@ Entradas recusadas na validação **não** geram `Activity` (só a métrica, com
 |---|---|---|---|---|
 | `vault.operation.duration` | Histograma (`double`) | `s` | `vault.provider`, `vault.operation`, `error.type` (só em falha) | Toda operação de provedor, inclusive entradas recusadas (duração 0) e cancelamentos (`canceled`) |
 | `vault.cache.requests` | Contador (`long`) | `{request}` | `vault.provider`, `vault.cache.result` = `hit`, `miss` ou `coalesced` | Toda leitura com o cache ligado (`coalesced` = aguardou uma leitura simultânea da mesma chave) |
+| `vault.circuit.state_changes` | Contador (`long`) | `{change}` | `vault.provider`, `vault.circuit.state` = `open`, `half_open` ou `closed` | Toda mudança de estado do circuit breaker ([🔁 Resiliência](resiliencia.md)); chamadas recusadas aparecem em `vault.operation.duration` com `error.type` = `VAULT_CIRCUITO_ABERTO` |
 
 A contagem de operações por tipo e resultado vem do próprio histograma (convenção do OpenTelemetry). Todas as dimensões são de baixa cardinalidade.
 
@@ -153,6 +149,10 @@ Mensagens geradas por *source generator* (`LoggerMessage`: sem alocação com o 
 | 2008 | Information | `Auditoria do cofre {Provider}: {Operation} de '{ItemName}': {Reason}.` | Leitura sensível (ex.: segredo gerenciado com chave privada) |
 | 2009 | Warning | `... rotação de '{ItemName}' gravou a versão {Version}, mas {Pending} versões anteriores podem continuar habilitadas ({ErrorCode})...` | `RotateSecretAsync` (sobrecarga com `ILogger`) incompleta |
 | 2010 | Warning | `Health check do cofre sem nenhuma verificação...` | Nenhum store registrado oferece verificação (ex.: só `IKeyCryptography` sem `IVaultHealthProbe`); registrado uma vez |
+| 2011 | Warning | `Cofre {Provider}: circuito aberto após falhas repetidas; chamadas recusadas por {BreakSeconds} s...` | Circuit breaker abriu |
+| 2012 | Information | `Cofre {Provider}: circuito meio-aberto; testando o cofre com uma chamada.` | Fim da pausa |
+| 2013 | Information | `Cofre {Provider}: circuito fechado; o cofre voltou a responder.` | Chamada de teste com sucesso |
+| 2014 | Debug | `Cofre {Provider}: {Operation} de '{ItemName}' recusada com o circuito aberto.` | Cada chamada recusada (Debug para não inundar o log na queda) |
 | 2100 | Error | `Configuração do cofre ({Provider}): falha na carga inicial: {ErrorCode}.` | Carga **inicial** do `IConfiguration` falhou (só ela) |
 | 2101 | Warning | `... falha na recarga, valores anteriores mantidos: {ErrorCode}.` | Recarga falhou depois de uma carga aplicada (timer ou `Reload()` manual) |
 | 2102 | Error | `... {Count} segredos correspondem ao filtro, acima do limite MaxSecrets ({MaxSecrets})...` | Estouro de `MaxSecrets` |
@@ -171,9 +171,9 @@ Mensagens geradas por *source generator* (`LoggerMessage`: sem alocação com o 
 |---|---|
 | Segredos | `secret.get`, `secret.exists`, `secret.list`, `secret.versions`, `secret.set`, `secret.update`, `secret.delete`, `secret.list-deleted`, `secret.recover`, `secret.purge`, `secret.backup`, `secret.restore`, `secret.health` |
 | Chaves | `key.get`, `key.list`, `key.versions`, `key.create`, `key.update`, `key.rotate`, `key.delete`, `key.list-deleted`, `key.recover`, `key.purge`, `key.backup`, `key.restore`, `key.encrypt`, `key.decrypt`, `key.wrap`, `key.unwrap`, `key.sign`, `key.verify`, `key.health` |
-| Certificados | `certificate.get`, `certificate.download`, `certificate.list`, `certificate.versions`, `certificate.create`, `certificate.import`, `certificate.update`, `certificate.delete`, `certificate.list-deleted`, `certificate.recover`, `certificate.purge`, `certificate.backup`, `certificate.restore`, `certificate.health` |
+| Certificados | `certificate.get`, `certificate.download`, `certificate.list`, `certificate.versions`, `certificate.create`, `certificate.import`, `certificate.migrate`, `certificate.update`, `certificate.delete`, `certificate.list-deleted`, `certificate.recover`, `certificate.purge`, `certificate.backup`, `certificate.restore`, `certificate.health` |
 
-Operações de escrita (auditadas em `Information`): `set`, `update`, `delete`, `recover`, `purge`, `backup`, `restore`, `create`, `rotate`, `import` e `certificate.download`. As operações criptográficas (`encrypt`, `decrypt`, `wrap`, `unwrap`, `sign`, `verify`) são leituras (`Debug`).
+Operações de escrita (auditadas em `Information`): `set`, `update`, `delete`, `recover`, `purge`, `backup`, `restore`, `create`, `rotate`, `import`, `migrate` (só HashiCorp Vault) e `certificate.download`. As operações criptográficas (`encrypt`, `decrypt`, `wrap`, `unwrap`, `sign`, `verify`) são leituras (`Debug`).
 
 ---
 

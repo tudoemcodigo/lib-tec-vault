@@ -10,7 +10,7 @@ namespace TEC.Vault.Secrets;
 /// Leitor de segredos em camadas (fallback): consulta uma lista ordenada de leitores.
 /// Permite sobrescrever segredos em variáveis de ambiente com fallback transparente para cofre remoto (Azure, HashiCorp, etc.).
 /// </summary>
-public sealed class ChainedSecretReader : ISecretReader, IVaultHealthProbe
+public sealed class ChainedSecretReader : ISecretReader, IVaultHealthProbe, IDisposable, IAsyncDisposable
 {
     /// <summary>Nome do provedor.</summary>
     public const string Provider = "Chained";
@@ -38,6 +38,28 @@ public sealed class ChainedSecretReader : ISecretReader, IVaultHealthProbe
     }
 
     /// <inheritdoc />
+    public void Dispose()
+    {
+        foreach (var reader in _readers)
+        {
+            if (reader is IDisposable d)
+                d.Dispose();
+        }
+    }
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
+    {
+        foreach (var reader in _readers)
+        {
+            if (reader is IAsyncDisposable ad)
+                await ad.DisposeAsync().ConfigureAwait(false);
+            else if (reader is IDisposable d)
+                d.Dispose();
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<Result<VaultSecret>> GetSecretAsync(string name, string? version = null, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -61,8 +83,8 @@ public sealed class ChainedSecretReader : ISecretReader, IVaultHealthProbe
 
             lastError = result.Error;
 
-            // Se for item não encontrado, continua no próximo provedor da cadeia
-            if (result.Error?.Code == VaultErrors.NotFoundCode)
+            // Se for item não encontrado ou formato não suportado por esta camada, continua no próximo provedor da cadeia
+            if (result.Error?.Code is VaultErrors.NotFoundCode or VaultErrors.InvalidInputCode)
                 continue;
 
             // Falha grave de autorização ou indisponibilidade interrompe a busca
@@ -87,7 +109,7 @@ public sealed class ChainedSecretReader : ISecretReader, IVaultHealthProbe
             if (result.IsSuccess && result.Value)
                 return Result<bool>.Success(true);
 
-            if (result.IsFailure && result.Error?.Code != VaultErrors.NotFoundCode)
+            if (result.IsFailure && result.Error?.Code is not (VaultErrors.NotFoundCode or VaultErrors.InvalidInputCode))
                 return result;
         }
 
@@ -116,6 +138,10 @@ public sealed class ChainedSecretReader : ISecretReader, IVaultHealthProbe
             }
             else
             {
+                // Se uma camada falhar com erro grave, não falha aberto para não limpar chaves do IConfiguration
+                if (result.Error?.Code != VaultErrors.NotFoundCode)
+                    return result;
+
                 lastError = result.Error;
             }
         }

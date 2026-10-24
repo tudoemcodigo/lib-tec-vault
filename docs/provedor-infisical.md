@@ -1,4 +1,3 @@
-| `Http.CircuitBreaker` | ✅ `CircuitBreaker:*` | ligado | Circuit breaker do cofre ([🔁 Resiliência](resiliencia.md)) |
 [🏠 TEC.Vault](../README.md) › [📚 Documentação](README.md) › 🟣 Provedor Infisical
 
 # 🟣 Provedor Infisical
@@ -66,7 +65,7 @@ sequenceDiagram
 
 - **Credencial relida a cada login**: client secret, token da service account (projetado e rotacionado pelo Kubernetes) e token de acesso podem ser trocados no arquivo sem reiniciar a aplicação.
 - **Renovação antecipada**: faltando 10% da vida do token (entre 10 segundos e 5 minutos antes de expirar).
-- **Login único**: chamadas simultâneas com o token vencido fazem um só login; um login que falha não fica guardado.
+- **Login único**: chamadas simultâneas com o token vencido fazem um só login; o desfecho de um login que falha vale para as chamadas simultâneas e, por 2 segundos (`VaultTokenSource.FailureCooldown`), para as seguintes, sem novo login.
 - **403 não refaz o login** no Infisical: é falta de permissão (`VAULT_ACESSO_NEGADO`).
 - **`AccessToken`**: sem expiração conhecida e sem renovação pela biblioteca; depois de um 401 o token é relido do arquivo ou da variável.
 
@@ -252,6 +251,7 @@ if (token.IsSuccess)
 | `CaseInsensitiveNames` | ✅ | `true` | Nome não encontrado exato procura um único igual sem diferenciar maiúsculas (lista a pasta). `false`: um segredo inexistente custa uma só requisição |
 | `Http.MaxRetries` | ✅ `MaxRetries` | `3` | Tentativas extras em falhas transitórias (0 a 10) |
 | `Http.NetworkTimeout` | ✅ `NetworkTimeout` | `00:00:30` | Tempo limite de cada tentativa (até 5 minutos) |
+| `Http.CircuitBreaker` | ✅ `CircuitBreaker:*` | ligado | Circuit breaker do cofre ([🔁 Resiliência](resiliencia.md)) |
 | `Http.MaxRetryDelay` | — | `00:00:30` | Maior `Retry-After` aceito antes de desistir (0 a 5 minutos) |
 | `Http.MaxResponseBytes` | — | `4194304` (4 MB) | Tamanho máximo de uma resposta (1 KB a 64 MB) |
 | `Http.Handler` | — | `null` | Handler próprio (proxy, CA interna). Sem ele: `SocketsHttpHandler` sem redirecionamento e com conexões renovadas a cada 5 minutos |
@@ -281,6 +281,7 @@ if (token.IsSuccess)
 | HTTP 429 com retentativas esgotadas ou `Retry-After` acima de `MaxRetryDelay` | `VAULT_LIMITE_EXCEDIDO` | Reduza a taxa ou ligue o cache |
 | HTTP 408, 5xx (inclusive 503 com `Retry-After` longo e também **no login**), rede, tempo limite | `VAULT_INDISPONIVEL` | Tente mais tarde |
 | Listagem acima de `MaxListItems` | `VAULT_LISTAGEM_ACIMA_DO_LIMITE` | Use uma pasta por aplicação ou aumente o limite |
+| Circuit breaker aberto | `VAULT_CIRCUITO_ABERTO` | Aguarde a volta do cofre ([🔁 Resiliência](resiliencia.md)) |
 | Resposta fora do formato ou acima de `MaxResponseBytes` | `VAULT_FALHA` | Pasta grande demais: divida em pastas ou aumente `Http.MaxResponseBytes` |
 | Escrita pendente de aprovação | `VAULT_OPERACAO_NAO_SUPORTADA` | Aprove a mudança no Infisical |
 | Campo sem equivalente (tipo, habilitado, validade) | `VAULT_ENTRADA_INVALIDA` | Informe só valor e tags |

@@ -20,7 +20,7 @@ São duas camadas, uma dentro da outra:
 
 | Camada | Onde | O que faz |
 |---|---|---|
-| **Retentativa** | Dentro de cada chamada ao cofre (Azure SDK; `VaultHttpClient` nos provedores HTTP) | Repete falhas passageiras com backoff exponencial e jitter, respeitando `Retry-After`. Nos provedores HTTP, só repete operações idempotentes |
+| **Retentativa** | Dentro de cada chamada ao cofre (Azure SDK; `VaultHttpClient` no HashiCorp Vault e no Infisical) | Repete falhas passageiras com backoff exponencial e jitter, respeitando `Retry-After`. Nos provedores HTTP, só repete operações idempotentes. **AWS Secrets Manager e Google Secret Manager não têm retentativa própria** (um `HttpClient` direto, só com `Http.NetworkTimeout`): `Http.MaxRetries`, `Http.MaxRetryDelay` e `Http.MaxResponseBytes` não se aplicam a eles |
 | **Circuit breaker** | Em volta da chamada inteira, já com as retentativas (`VaultProviderBase`, [Polly](https://www.pollydocs.org/) `Polly.Core`) | Conta as chamadas que terminaram em `VAULT_INDISPONIVEL` ou `VAULT_LIMITE_EXCEDIDO`. Com falhas demais na janela, **abre**: as chamadas seguintes devolvem `VAULT_CIRCUITO_ABERTO` na hora, sem consultar o cofre |
 
 Ciclo do circuito:
@@ -31,17 +31,17 @@ Aberto ──(passou BreakDuration)──▶ Meio-aberto: uma chamada de teste v
 Meio-aberto ──(sucesso)──▶ Fechado        Meio-aberto ──(falha)──▶ Aberto de novo
 ```
 
-- **Um circuito por cofre**, compartilhado pelos stores que falam com ele: no Azure Key Vault, segredos, chaves e certificados do mesmo cofre abrem e fecham juntos; no HashiCorp Vault, os stores do mesmo cliente.
+- **Um circuito por cofre**, compartilhado pelos stores que falam com ele: no Azure Key Vault, segredos, chaves e certificados do mesmo cofre abrem e fecham juntos; no HashiCorp Vault, os stores do mesmo cliente. No AWS Secrets Manager e no Google Secret Manager há um circuito por instância do provedor (só segredos).
 - **Login:** 408, 429 e 5xx no login (ex.: Vault selado) saem como `VAULT_INDISPONIVEL`/`VAULT_LIMITE_EXCEDIDO` e **contam** no circuito; só a credencial recusada (4xx) é `VAULT_AUTENTICACAO_FALHOU`. Chamadas simultâneas aguardam um único login e recebem o mesmo desfecho; uma falha de login fica guardada por 2 s (`VaultTokenSource.FailureCooldown`), sem novo login nesse intervalo.
 - **Não abrem o circuito:** item não encontrado, acesso negado, autenticação, entrada inválida, conflito, falha não classificada (`VAULT_FALHA`) e cancelamento. Esses erros não indicam cofre fora do ar.
 - **Chamada de teste (meia-abertura):** só uma resposta do cofre a fecha (sucesso ou erro do item, como não encontrado). Se ela for cancelada ou terminar em `VAULT_FALHA`, conta como falha e o circuito volta a abrir. Enquanto a chamada de teste não termina, as demais continuam recebendo `VAULT_CIRCUITO_ABERTO`.
-- **Provedores locais** (em memória e Synced) não têm circuit breaker.
+- **Provedores locais** (em memória e Synced) e o `ChainedSecretReader` não têm circuit breaker (no encadeado, cada leitor da cadeia usa o seu).
 - **Health check:** com o circuito aberto, a verificação responde na hora como não saudável (`VAULT_CIRCUITO_ABERTO` no log, evento 2007) e tira a instância do balanceamento sem pressionar o cofre.
 - **`IConfiguration`:** a recarga periódica com o circuito aberto falha rápido e mantém os valores anteriores (evento 2101).
 
 ## 🚀 Uso
 
-Nada a fazer: o circuit breaker já vem ligado nos provedores de rede (Azure Key Vault, HashiCorp Vault, Infisical). Para ajustar:
+Nada a fazer: o circuit breaker já vem ligado nos provedores de rede (Azure Key Vault, HashiCorp Vault, Infisical, AWS Secrets Manager e Google Secret Manager). Para ajustar:
 
 ```csharp
 builder.Services.AddTecVault(vault => vault.UseAzureKeyVault(o =>
@@ -50,7 +50,7 @@ builder.Services.AddTecVault(vault => vault.UseAzureKeyVault(o =>
     o.CircuitBreaker.BreakDuration = TimeSpan.FromSeconds(15);
 }));
 
-// Provedores HTTP: em Http.CircuitBreaker
+// Provedores HTTP (HashiCorp Vault, Infisical, AWS e Google): em Http.CircuitBreaker
 builder.Services.AddTecVault(vault => vault.UseHashiCorpVault(o =>
 {
     o.Address = new Uri("https://vault.interno:8200");
@@ -58,7 +58,7 @@ builder.Services.AddTecVault(vault => vault.UseHashiCorpVault(o =>
 }));
 ```
 
-Pela configuração, na subseção `CircuitBreaker` do provedor:
+Pela configuração, na subseção `CircuitBreaker` do provedor (Azure Key Vault, HashiCorp Vault e Infisical; o registro por configuração de AWS e Google não lê essa subseção, ajuste-os em código):
 
 ```json
 {
@@ -84,7 +84,7 @@ if (result.Error?.Code is VaultErrors.CircuitOpenCode or VaultErrors.Unavailable
 
 ## ⚙️ Opções
 
-`VaultCircuitBreakerOptions`, em `AzureKeyVaultOptions.CircuitBreaker` e em `Http.CircuitBreaker` (`HashiCorpVaultOptions`, `InfisicalOptions`). Na configuração: `Vault:<Provedor>:CircuitBreaker:<Chave>`.
+`VaultCircuitBreakerOptions`, em `AzureKeyVaultOptions.CircuitBreaker` e em `Http.CircuitBreaker` (`HashiCorpVaultOptions`, `InfisicalOptions`, `AwsSecretsManagerOptions`, `GoogleSecretManagerOptions`). Na configuração (Azure, HashiCorp e Infisical): `Vault:<Provedor>:CircuitBreaker:<Chave>`.
 
 | Opção | Tipo | Padrão | Faixa | O que faz |
 |---|---|---|---|---|
@@ -130,5 +130,4 @@ Com o cofre limitando requisições, insistir piora o problema (o limite costuma
 </details>
 
 ---
-
-[⬆️ Voltar ao topo](#-resiliência)
+⬅️ [📈 Observabilidade](observabilidade.md) · [📚 Índice](README.md) · [❌ Erros](erros.md) ➡️

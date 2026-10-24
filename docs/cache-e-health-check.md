@@ -86,6 +86,9 @@ A sonda registrada pelo `AddTecVault` verifica **cada instância** de provedor r
 | Azure Key Vault | Uma página de um item de metadados (`secret.health`, `key.health`, `certificate.health`) |
 | HashiCorp Vault | Listagem de nomes no KV (segredos e certificados) e de chaves no Transit |
 | Infisical · Synced | Listagem de segredos (metadados) |
+| AWS Secrets Manager | `ListSecrets` com `MaxResults = 1` (qualquer falha vira `VAULT_INDISPONIVEL`; não passa pelo circuit breaker) |
+| Google Secret Manager | Listagem de segredos com `pageSize=1` (qualquer falha vira `VAULT_INDISPONIVEL`; não passa pelo circuit breaker) |
+| Encadeado | Chama a sonda de cada leitor da cadeia que a implementa e devolve a primeira falha |
 | Em memória | Sempre saudável |
 | Provedor próprio sem sonda | Listagem de metadados (`ListSecretsAsync`, `ListKeysAsync`, `ListCertificatesAsync`) |
 | Só `IKeyCryptography`, sem sonda | Não é verificado (não há operação barata e sem efeito). Se nenhum store for verificável, a sonda responde saudável e registra um aviso (evento 2010, `Warning`) na primeira verificação |

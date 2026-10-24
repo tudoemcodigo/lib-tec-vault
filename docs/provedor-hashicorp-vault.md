@@ -1,4 +1,3 @@
-| `Http.CircuitBreaker` | `VaultCircuitBreakerOptions` | ligado | `CircuitBreaker:*` | Circuit breaker do cofre, compartilhado pelos stores do mesmo cliente ([🔁 Resiliência](resiliencia.md)) |
 [🏠 TEC.Vault](../README.md) › [📚 Documentação](README.md) › 🏛️ Provedor HashiCorp Vault
 
 # 🏛️ Provedor HashiCorp Vault
@@ -272,7 +271,7 @@ Criptografar, decifrar, wrap/unwrap e assinar são executados **no Vault**: a ch
 | Item | Comportamento |
 |---|---|
 | Armazenamento | KV v2, em **dois itens** por certificado. Parte pública em `{Kv.BasePath}/{Kv.CertificatesPath}/{nome}` (padrão `minha-api/_certificates/<nome>`): uma versão do KV por versão do certificado, com `cer` (DER em Base64), `chain` (intermediárias em DER Base64, separadas por vírgula; ausente sem cadeia), `exportable` e `key_version`. Chave privada em `{Kv.BasePath}/{Kv.CertificateKeysPath}/{nome}` (padrão `minha-api/_certificates-keys/<nome>`), na versão `key_version`, com `pkcs12` (PKCS#12 sem senha com o certificado, a chave e a cadeia, em Base64). Só os downloads leem a pasta das chaves: a política do Vault separa quem lê certificados de quem tira a chave privada |
-| Formato anterior à 0.2.0 | Item público com `pkcs12` (sem `key_version`): continua legível por todas as operações. Converta com `MigrateCertificateKeysAsync` ([Migração](#migração-da-chave-privada-dos-certificados-020)) |
+| Formato legado | Item público com `pkcs12` (sem `key_version`), gravado antes de a chave privada ser separada: continua legível por todas as operações. Converta com `MigrateCertificateKeysAsync` ([Migração](#migração-da-chave-privada-dos-certificados-formato-legado)) |
 | `Issuer = null` | Emitido pelo **PKI** com o emissor padrão do mount: `POST {Pki.Mount}/sign/{Pki.Role}` |
 | `Issuer = "Self"` (sem diferenciar maiúsculas) | Autoassinado, gerado no processo (`VaultCertificateFactory`) |
 | Outro `Issuer` | PKI com esse emissor: `POST {Pki.Mount}/issuer/{Issuer}/sign/{Pki.Role}` |
@@ -284,8 +283,8 @@ Criptografar, decifrar, wrap/unwrap e assinar são executados **no Vault**: a ch
 | Prefixo `tec.` | Chaves de tag começando por `tec.` são **reservadas** → `VAULT_ENTRADA_INVALIDA` |
 | `GetCertificateAsync` | Só a parte pública (lê só o item público); desabilitado volta com `Enabled = false` |
 | `DownloadCertificateAsync` | Auditado como escrita; desabilitado → `VAULT_ITEM_DESABILITADO`; `exportable = false` → `VAULT_CERTIFICADO_NAO_EXPORTAVEL`, ambos conferidos **antes** de ler a pasta das chaves. Sem `read` na pasta das chaves → `VAULT_ACESSO_NEGADO`; chave excluída ou destruída → `VAULT_ITEM_NAO_ENCONTRADO`. Devolve só o certificado com a chave |
-| `DownloadCertificateWithChainAsync` | Só no `HashiCorpVaultCertificateStore`: mesmas regras, devolve `X509Certificate2Collection` com o certificado com a chave **primeiro** e a cadeia em seguida (para TLS de servidor). Itens do formato anterior à 0.2.0 não têm cadeia |
-| `MigrateCertificateKeysAsync` | Só no `HashiCorpVaultCertificateStore`: converte um certificado do formato anterior à 0.2.0 ([Migração](#migração-da-chave-privada-dos-certificados-020)) |
+| `DownloadCertificateWithChainAsync` | Só no `HashiCorpVaultCertificateStore`: mesmas regras, devolve `X509Certificate2Collection` com o certificado com a chave **primeiro** e a cadeia em seguida (para TLS de servidor). Itens do formato legado não têm cadeia |
+| `MigrateCertificateKeysAsync` | Só no `HashiCorpVaultCertificateStore`: converte um certificado do formato legado ([Migração](#migração-da-chave-privada-dos-certificados-formato-legado)) |
 | Listagens e lixeira | Como nos segredos (mesmo teto `MaxListItems`, exclusão lógica, recuperação, remoção definitiva). Excluir, recuperar e remover definitivamente também aplicam a operação ao item da chave privada (a chave primeiro) |
 
 ### Limites e regras de entrada
@@ -299,12 +298,12 @@ Criptografar, decifrar, wrap/unwrap e assinar são executados **no Vault**: a ch
 | Itens por listagem | `MaxListItems` (padrão 10.000), inclusive versões e busca de nome sem diferenciar maiúsculas |
 | Resposta | Até `Http.MaxResponseBytes` (padrão 4 MB) |
 
-### Migração da chave privada dos certificados (0.2.0)
+### Migração da chave privada dos certificados (formato legado)
 
-Até a 0.1.0 a chave privada (`pkcs12`) ficava **no mesmo item** que a parte pública: quem lia ou listava certificados lia também a chave, e `Exportable = false` só era aplicado pela biblioteca. A partir da 0.2.0 a chave fica em `Kv.CertificateKeysPath`. Itens antigos continuam legíveis; para tirar a chave do item público:
+Em compilações anteriores à 0.0.1 (nunca publicadas) a chave privada (`pkcs12`) ficava **no mesmo item** que a parte pública: quem lia ou listava certificados lia também a chave, e `Exportable = false` só era aplicado pela biblioteca. Na 0.0.1 a chave fica em `Kv.CertificateKeysPath`. Itens antigos continuam legíveis; para tirar a chave do item público (só se o seu Vault tem certificados gravados por uma compilação interna antiga):
 
-1. **Atualize as políticas antes** de subir a 0.2.0: a identidade que **cria, importa ou baixa** certificados precisa de `secret/data/minha-api/_certificates-keys/*` (e de `metadata/` para excluir/recuperar); as demais devem ter essa pasta **negada** ([política](#-política-de-menor-privilégio)).
-2. Suba a 0.2.0 em **todas** as instâncias que leem os certificados. Uma instância 0.1.0 não lê certificados gravados pela 0.2.0 (falha com `VAULT_FALHA`, "Item do KV sem os campos do certificado").
+1. **Atualize as políticas antes** de subir a versão nova: a identidade que **cria, importa ou baixa** certificados precisa de `secret/data/minha-api/_certificates-keys/*` (e de `metadata/` para excluir/recuperar); as demais devem ter essa pasta **negada** ([política](#-política-de-menor-privilégio)).
+2. Suba a versão nova em **todas** as instâncias que leem os certificados. Uma instância antiga não lê certificados gravados no formato novo (falha com `VAULT_FALHA`, "Item do KV sem os campos do certificado").
 3. Converta cada certificado com a identidade de administração (que precisa também de `update` em `secret/destroy/minha-api/_certificates/*`):
 
 ```csharp
@@ -371,7 +370,7 @@ path "secret/metadata/minha-api/_certificates-keys/*" { capabilities = ["deny"] 
 # path "secret/delete/minha-api/_certificates-keys/*"   { capabilities = ["update"] }
 # path "secret/undelete/minha-api/_certificates-keys/*" { capabilities = ["update"] }
 # path "secret/destroy/minha-api/_certificates-keys/*"  { capabilities = ["update"] }   # limpeza após gravação parcial
-# Migração do formato anterior à 0.2.0 (MigrateCertificateKeysAsync), só administração:
+# Migração do formato legado (MigrateCertificateKeysAsync), só administração:
 # path "secret/destroy/minha-api/_certificates/*"       { capabilities = ["update"] }
 
 # ---------- Token ----------
@@ -480,6 +479,7 @@ HTTP só é aceito para `localhost`/loopback **em Development**; em qualquer out
 | `Http.MaxResponseBytes` | `int` | `4 MB` | — | Tamanho máximo de uma resposta lida; de 1 KB a 64 MB |
 | `Http.Handler` | `HttpMessageHandler?` | `null` | — | Handler próprio (CA interna, proxy). Sem valor: `SocketsHttpHandler` sem redirecionamento, conexões renovadas a cada 5 min |
 | `Http.TimeProvider` | `TimeProvider?` | `TimeProvider.System` | — | Relógio das esperas entre tentativas |
+| `Http.CircuitBreaker` | `VaultCircuitBreakerOptions` | ligado | `CircuitBreaker:*` | Circuit breaker do cofre, compartilhado pelos stores do mesmo cliente ([🔁 Resiliência](resiliencia.md)) |
 | `Stores` | `VaultStores` | `All` | — (vem de `Vault:Provider` e das escolhas por família) | Stores registrados por `UseHashiCorpVault` |
 | `HostEnvironment` | `IHostEnvironment?` | `null` | — | Ambiente (libera HTTP em `localhost` só em Development); sem valor, o do container ou as variáveis de ambiente |
 | `TimeProvider` | `TimeProvider?` | `TimeProvider.System` | — | Relógio (validade do token) |
@@ -537,7 +537,7 @@ O `Retry-After` é respeitado em 429 e 503 até `Http.MaxRetryDelay`; acima diss
 > **Upsert do Transit:** cifrar com um nome inexistente **cria uma chave AES** se o token tiver a capacidade `create` em `transit/encrypt/<nome>`. O provedor confere que a chave existe e é RSA antes de cifrar ou fazer wrap, mas uma chave excluída por outra instância entre a conferência e a chamada ainda criaria a chave. Na política, dê à aplicação **só `update`** em `transit/encrypt/*`.
 
 > [!WARNING]
-> A chave privada dos certificados fica no KV, em `Kv.CertificateKeysPath` (PKCS#12 sem senha). `Exportable = false` impede o download **pela biblioteca**; quem tem `read` em `secret/data/<pasta>/_certificates-keys/*` lê a chave direto pela API. Negue essa pasta a toda identidade que não baixa certificados (a parte pública, em `_certificates/*`, não tem a chave desde a 0.2.0; converta os itens antigos com `MigrateCertificateKeysAsync`) e, para assinar, prefira uma chave do Transit (`IKeyCryptography`), que nunca sai do Vault.
+> A chave privada dos certificados fica no KV, em `Kv.CertificateKeysPath` (PKCS#12 sem senha). `Exportable = false` impede o download **pela biblioteca**; quem tem `read` em `secret/data/<pasta>/_certificates-keys/*` lê a chave direto pela API. Negue essa pasta a toda identidade que não baixa certificados (a parte pública, em `_certificates/*`, não tem a chave no formato atual; converta os itens antigos com `MigrateCertificateKeysAsync`) e, para assinar, prefira uma chave do Transit (`IKeyCryptography`), que nunca sai do Vault.
 
 > [!CAUTION]
 > `DeleteKeyAsync` é **definitivo** no Transit: dados cifrados com a chave ficam irrecuperáveis. Dê a capacidade `delete` em `transit/keys/*` só à identidade de administração. Se o `DELETE` falhar depois de ligar `deletion_allowed`, o provedor tenta voltá-lo para `false`; o resultado vai no detalhe do erro no log (`deletion_allowed revertido` ou `deletion_allowed continua ligado`).

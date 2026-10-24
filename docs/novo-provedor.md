@@ -1,9 +1,8 @@
-| `CircuitBreaker` | `VaultCircuitBreakerOptions` | ligado (50%, 10 chamadas, 30 s, 30 s) | Ver [🔁 Resiliência](resiliencia.md); crie um `VaultCircuitBreaker` por cofre com `VaultCircuitBreaker.Create(...)` e passe ao construtor da base |
 [🏠 TEC.Vault](../README.md) › [📚 Documentação](README.md) › 🧱 Novo provedor
 
 # 🧱 Novo provedor
 
-> Como implementar outro cofre (AWS Secrets Manager, GCP Secret Manager, Doppler, 1Password...) sobre a mesma base dos provedores existentes, herdando validação de entrada, `Result`, auditoria sem valores, limites de listagem, traces e métricas.
+> Como implementar outro cofre (Doppler, 1Password, Akeyless...) sobre a mesma base dos provedores existentes, herdando validação de entrada, `Result`, auditoria sem valores, limites de listagem, traces e métricas.
 
 ## 📑 Sumário
 
@@ -24,7 +23,7 @@
 
 ## 🎯 Visão geral
 
-Tudo o que um provedor precisa fica no pacote `TEC.Vault`, nos namespaces `TEC.Vault.Providers` (base, regras, certificados, ambiente) e `TEC.Vault.Providers.Http` (base para cofres acessados por HTTP sem SDK, usada pelo HashiCorp Vault e pelo Infisical).
+Tudo o que um provedor precisa fica no pacote `TEC.Vault`, nos namespaces `TEC.Vault.Providers` (base, regras, certificados, ambiente) e `TEC.Vault.Providers.Http` (base para cofres acessados por HTTP sem SDK, usada pelo HashiCorp Vault e pelo Infisical; o AWS Secrets Manager e o Google Secret Manager derivam de `VaultHttpProviderBase`, mas usam um `HttpClient` próprio em vez de `VaultHttpClient`).
 
 ```mermaid
 flowchart LR
@@ -82,9 +81,10 @@ flowchart TD
 1. **Pacote:** crie `TEC.Vault.<Provedor>` referenciando só `TEC.Vault` + o SDK do cofre (ou nenhum SDK, com a [base HTTP](#provedor-http-sem-sdk)). Alvos `net8.0;net10.0`, AOT, metadados e avisos como erro vêm do `build/Tec.Build.props`; no csproj ficam só `Description` e `PackageTags`, e um `README.md` próprio na pasta do projeto.
 2. **Interfaces:** implemente só o que o cofre oferece de verdade. Todo provedor de segredos implementa `ISecretReader`; `ISecretStore` se aceita escrita; `ISecretRecycleBin`/`ISecretBackup` **só** se houver lixeira/backup (a ausência da interface já informa a aplicação na resolução do DI). Chaves: `IKeyReader`/`IKeyStore` para gestão e `IKeyCryptography` para uso. Referências:
    - **HashiCorp Vault** → KV v2: `ISecretStore` + `ISecretRecycleBin`; Transit: `IKeyStore` + `IKeyCryptography` (sem lixeira e sem backup);
-   - **Infisical** → `ISecretStore`, sem lixeira e sem backup;
-   - **Synced** → só `ISecretReader`.
-3. **Base:** herde de `VaultProviderBase` (ou de `VaultHttpProviderBase`, sem SDK), implemente `MapException` (exceções do SDK → `VaultErrors`; desconhecidas → `null`) e passe cada operação por `ExecuteAsync`, validando a entrada antes com um `VaultProviderRules` do provedor (padrão de nome terminado em `\z`, tags, tamanhos).
+   - **Infisical**, **AWS Secrets Manager** e **Google Secret Manager** → `ISecretStore`, sem lixeira e sem backup;
+   - **Synced** → só `ISecretReader`;
+   - **Encadeado** (`ChainedSecretReader`) → `ISecretReader` + `IVaultHealthProbe`, compondo outros leitores (veja [Provedor Encadeado](provedor-encadeado.md)).
+3. **Base:** herde de `VaultProviderBase` (ou de `VaultHttpProviderBase`, sem SDK), implemente `MapException` (exceções do SDK → `VaultErrors`; desconhecidas → `null`) e passe cada operação por `ExecuteAsync`, validando a entrada antes com um `VaultProviderRules` do provedor (padrão de nome terminado em `\z`, tags, tamanhos; se as versões do cofre não são 32 hexadecimais, defina `VersionPattern`). Em cofres de rede, crie o circuit breaker com `VaultCircuitBreaker.Create(...)` e passe-o ao construtor da base ([🔁 Resiliência](resiliencia.md)).
 4. **Modelos e listagens:** preencha `Id` com o identificador nativo, `ManagedBy` quando o item for gerenciado por outro recurso, `HardwareProtected` para chaves em HSM; copie tags com `CopyTags` (tolera tags malformadas do servidor). Opções sem suporte (`HardwareProtected`, `Issuer`) falham com `VaultErrors.NotSupported()`, nunca são ignoradas. Toda listagem chama `EnsureListLimit` com um `MaxListItems` configurável.
 5. **Certificados:** carregue PFX com `VaultCertificateLoader.LoadPkcs12` e valide importações com `VaultProviderRules.ImportCertificate`. Se o cofre não gera certificados, gere par de chaves e CSR no processo com `VaultCertificateFactory`.
 6. **Registro:** exponha `UseXxx(this VaultBuilder ...)` chamando `UseSecretStore`/`UseKeyStore`/`UseCertificateStore` com fábrica (permite construtor interno e é seguro para AOT) ou por tipo (construtor público). Com as três famílias e uma opção `Stores`, use `builder.UseStores(...)` com `VaultBuilder.EnsureValidStores`. Valide as opções no `UseXxx` (`InvalidOperationException` com o nome da opção). Recursos só de desenvolvimento usam `VaultEnvironment` para falhar fechados fora de Development. Exponha também `AddXxx(this VaultProviderCatalog ...)`.
@@ -447,7 +447,7 @@ public class MeuVaultSecretStoreContractTests : SecretStoreContract, IDisposable
 }
 ```
 
-Os provedores existentes herdam assim: `InMemory*ContractTests`, `DirectorySecretStoreContractTests`, `EnvironmentSecretStoreContractTests`, `JsonFileSecretStoreContractTests`, `DotEnvFileSecretStoreContractTests`, `InfisicalSecretStoreContractTests`, `HashiCorpVault*ContractTests` (sobre `FakeHashiCorpVault`) e `HashiCorpVaultLive*ContractTests` (contra um Vault real, categoria `Integracao`). Como rodar: [Testes](testes.md).
+Os provedores existentes herdam assim (AWS e Google têm só testes de unidade, sem contrato): `InMemory*ContractTests`, `DirectorySecretStoreContractTests`, `EnvironmentSecretStoreContractTests`, `JsonFileSecretStoreContractTests`, `DotEnvFileSecretStoreContractTests`, `InfisicalSecretStoreContractTests`, `HashiCorpVault*ContractTests` (sobre `FakeHashiCorpVault`) e `HashiCorpVaultLive*ContractTests` (contra um Vault real, categoria `Integracao`). Como rodar: [Testes](testes.md).
 
 ---
 
@@ -459,7 +459,7 @@ Os provedores existentes herdam assim: `InMemory*ContractTests`, `DirectorySecre
 
 | Membro | Retorno | Descrição |
 |---|---|---|
-| `VaultProviderBase(string providerName, ILogger logger)` *(protected)* | — | Nome do provedor (ex.: `"AzureKeyVault"`) e logger; vazio/nulo → `ArgumentException`/`ArgumentNullException` |
+| `VaultProviderBase(string providerName, ILogger logger, VaultCircuitBreaker? circuitBreaker = null)` *(protected)* | — | Nome do provedor (ex.: `"AzureKeyVault"`), logger e circuit breaker do cofre (`null` = sem circuit breaker, p.ex. provedores locais); vazio/nulo → `ArgumentException`/`ArgumentNullException` |
 | `ProviderName` | `string` | Nome do provedor |
 | `MapException(Exception exception)` *(protected abstract)* | `VaultFailure?` | Converte uma exceção do SDK; `null` = desconhecida (vira `VAULT_FALHA` com pilha no log) |
 | `ExecuteAsync<T>(string operation, string? itemName, Error? inputError, bool isWrite, Func<CancellationToken, Task<Result<T>>> action, CancellationToken cancellationToken)` *(protected)* | `Task<Result<T>>` | Executa uma operação com retorno |
@@ -537,7 +537,7 @@ using (key)
 
 | Membro | Retorno | Descrição |
 |---|---|---|
-| `VaultHttpProviderBase(string providerName, ILogger logger)` *(protected)* | — | Como `VaultProviderBase` |
+| `VaultHttpProviderBase(string providerName, ILogger logger, VaultCircuitBreaker? circuitBreaker = null)` *(protected)* | — | Como `VaultProviderBase` |
 | `MapException(Exception)` *(protected sealed override)* | `VaultFailure?` | `MapProviderException` e, sem resultado, `MapHttpException` |
 | `MapProviderException(Exception)` *(protected virtual)* | `VaultFailure?` | Conversões próprias do provedor, avaliadas antes das padrão (padrão: nenhuma) |
 | `MapHttpException(Exception)` *(static)* | `VaultFailure?` | Conversão padrão (tabela abaixo) |
@@ -571,6 +571,7 @@ using (key)
 | Membro | Retorno | Descrição |
 |---|---|---|
 | `VaultHttpClient(Uri baseAddress, VaultHttpSettings settings, VaultTokenSource? tokens = null, Action<HttpRequestMessage, string>? applyToken = null, bool reauthenticateOnForbidden = false)` | — | `baseAddress` já validado por `VaultEndpoint`; sem `tokens`, requisições sem autenticação (ex.: o próprio login); `applyToken` padrão = `Authorization: Bearer`; `reauthenticateOnForbidden` refaz o login também em 403 |
+| `VaultHttpClient(baseAddress, settings, tokens, applyToken, bool reauthenticateOnForbidden, Func<string, CancellationToken, Task<bool>>? isTokenRejected)` | — | Em 403, `isTokenRejected` confirma com o cofre se o token é o problema (`true` = refaz o login; `false` = o 403 é de política e é devolvido como está). Um `false` vale por `ForbiddenConfirmationCacheDuration` (5 s) para o mesmo token. É o que o HashiCorp Vault usa (`auth/token/lookup-self`) |
 | `BaseAddress` | `Uri` | Endereço do cofre |
 | `SendAsync(Func<HttpRequestMessage> createRequest, bool idempotent, CancellationToken)` | `Task<HttpResponseMessage>` | Envia (a requisição é recriada a cada tentativa) e devolve a resposta em qualquer status; o chamador descarta |
 | `EnsureSuccess(HttpResponseMessage response, string? detail = null)` *(static)* | `void` | Lança `VaultHttpException` (e descarta a resposta) se não for sucesso |
@@ -600,6 +601,22 @@ using (key)
 | `MaxResponseBytes` | `int` | `4 MB` | 1 KB a 64 MB |
 | `Handler` | `HttpMessageHandler?` | `null` (handler padrão acima) | Com handler próprio, **desligue `AllowAutoRedirect`** |
 | `TimeProvider` | `TimeProvider?` | `TimeProvider.System` | — |
+| `CircuitBreaker` | `VaultCircuitBreakerOptions` | ligado (50%, 10 chamadas, 30 s, 30 s) | Ver [🔁 Resiliência](resiliencia.md); crie um `VaultCircuitBreaker` por cofre com `VaultCircuitBreaker.Create(...)` e passe ao construtor da base |
+
+</details>
+
+<details>
+<summary><b><code>VaultCircuitBreaker</code></b> e <code>VaultCircuitBreakerOptions</code></summary>
+
+`VaultCircuitBreaker` (`sealed`, thread-safe, um por cofre; criado pelo provedor e entregue à base):
+
+| Membro | Retorno | Descrição |
+|---|---|---|
+| `VaultCircuitBreaker.Create(string providerName, VaultCircuitBreakerOptions? options, TimeProvider? timeProvider, string optionPrefix)` *(static)* | `VaultCircuitBreaker?` | Valida as opções e cria o circuito; `null` se `options` for `null` ou `Enabled = false` |
+| `VaultCircuitBreaker(string providerName, VaultCircuitBreakerOptions options, TimeProvider? timeProvider = null)` | — | Cria sem olhar `Enabled` |
+| `ProviderName` / `IsOpen` | `string` / `bool` | Nome do provedor / circuito aberto (chamadas recusadas sem consultar o cofre) |
+
+Só `VAULT_INDISPONIVEL` e `VAULT_LIMITE_EXCEDIDO` contam como falha. Na meia-abertura, só uma resposta do cofre fecha o circuito (cancelamento e exceção não mapeada reabrem). Opções (`VaultCircuitBreakerOptions`): `Enabled` (`true`), `FailureRatio` (0,5), `MinimumThroughput` (10), `SamplingDuration` (30 s), `BreakDuration` (30 s); `Read(VaultSettings)` lê a subseção `CircuitBreaker` no registro por configuração. Detalhes e faixas: [🔁 Resiliência](resiliencia.md).
 
 </details>
 
@@ -614,9 +631,9 @@ using (key)
 | `GetAsync(CancellationToken)` | `ValueTask<string>` | Token do cache ou de um novo login |
 | `Invalidate(string token)` | `void` | Descarta o token (ex.: 401/403); se outra chamada já o trocou, não faz nada |
 
-- **Renovação antecipada:** faltando 10% da vida do token (entre 10 segundos e 5 minutos antes de `ExpiresOn`).
+- **Renovação antecipada:** faltando 10% da vida do token (entre 10 segundos e 5 minutos antes de `ExpiresOn`, e nunca mais que metade da vida, para um token de vida curta não nascer vencido).
 - **Login único:** várias chamadas simultâneas com o token vencido fazem um só login.
-- **Falha não guardada:** um login que falha não fica em cache; token vazio → `VaultLoginException`.
+- **Falha guardada por 2 s:** o desfecho de um login que falha vale para as chamadas simultâneas e para as seguintes durante `VaultTokenSource.FailureCooldown` (2 s), sem novo login; cancelamento não é guardado; token vazio → `VaultLoginException`.
 
 `VaultToken(string Value, DateTimeOffset? ExpiresOn)` (`sealed record`): `ExpiresOn = null` = sem expiração conhecida (renovado só quando o cofre recusa). `ToString()` mascara o valor.
 
@@ -654,6 +671,7 @@ A base não tem opções próprias; as que um provedor novo deve oferecer, segui
 | `MaxListItems` | `10_000` (faixa 1..1.000.000) | Teto das listagens, aplicado com `EnsureListLimit`; inválido → `InvalidOperationException` na subida |
 | `Stores` | `VaultStores.All` (só as famílias que o cofre atende) | Famílias registradas; conferido com `VaultBuilder.EnsureValidStores` |
 | `Http` | `new VaultHttpSettings()` | Transporte dos provedores HTTP (tabela em [Base HTTP](#base-http-tecvaultprovidershttp)) |
+| `CircuitBreaker` | `VaultCircuitBreakerOptions` (ligado: 50%, 10 chamadas, 30 s, 30 s) | Circuit breaker do cofre; nos provedores HTTP fica em `Http.CircuitBreaker`. Ver [🔁 Resiliência](resiliencia.md) |
 | `TimeProvider` | `TimeProvider.System` | Relógio injetável (validade, expiração, esperas) |
 | `HostEnvironment` | `VaultEnvironment.FindHostEnvironment(services)` | Para a trava de Development e o HTTP local |
 

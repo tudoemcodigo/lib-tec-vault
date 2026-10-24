@@ -102,7 +102,7 @@ await certificados.ImportCertificateAsync("parceiro-pem-cifrado", pem,
 | Formato | Conteúdo | `Password` |
 |---|---|---|
 | **PKCS#12 (PFX)** | Binário DER (começa com `0x30`) | A do PFX, se houver |
-| **PEM** | No mesmo arquivo: `CERTIFICATE` (+ cadeia; guardada no Azure Key Vault e, desde a 0.2.0, no HashiCorp Vault, que a devolve em `DownloadCertificateWithChainAsync`) e a chave em `PRIVATE KEY` (PKCS#8), `RSA PRIVATE KEY` (PKCS#1) ou `EC PRIVATE KEY` (SEC1) | `null` |
+| **PEM** | No mesmo arquivo: `CERTIFICATE` (+ cadeia; guardada no Azure Key Vault e no HashiCorp Vault, que a devolve em `DownloadCertificateWithChainAsync`) e a chave em `PRIVATE KEY` (PKCS#8), `RSA PRIVATE KEY` (PKCS#1) ou `EC PRIVATE KEY` (SEC1) | `null` |
 | **PEM com chave criptografada** | `CERTIFICATE` + `ENCRYPTED PRIVATE KEY` (PKCS#8 criptografada) | A da chave |
 
 - O PEM é reconhecido em qualquer posição: saída do `openssl pkcs12 -nodes` (linhas `Bag Attributes`, `subject=` antes dos blocos) e arquivos com BOM UTF-8 funcionam. Só os blocos PEM reconhecidos vão ao cofre.
