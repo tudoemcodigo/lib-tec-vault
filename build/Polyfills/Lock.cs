@@ -1,3 +1,13 @@
+// --------------------------------------------------------------------------------------------------------------------
+// <copyright file="Lock.cs" company="Tudo em Código">
+//   Copyright (c) 2026 Roberto Oliveira / Tudo em Código.
+//   Autor: Roberto Oliveira
+//   Criação: 2026-10-24
+//   Licenciado sob a Licença Apache, Versão 2.0.
+//   Consulte o arquivo LICENSE e NOTICE na raiz do repositório para obter os termos de atribuição.
+// </copyright>
+// --------------------------------------------------------------------------------------------------------------------
+
 // ARQUIVO CANÔNICO: mantido em tudoemcodigo/tec-workflows (template/build/Polyfills). Não edite no componente.
 //
 // System.Threading.Lock (nativo no .NET 9+) para o alvo net8.0. O build/Tec.Build.props compila este arquivo só nos

@@ -25,7 +25,7 @@ concurrency:
 
 jobs:
   ci:
-    uses: tudoemcodigo/tec-workflows/.github/workflows/dotnet-ci.yml@v2
+    uses: tudoemcodigo/tec-workflows/.github/workflows/dotnet-ci.yml@v1
     permissions:
       contents: read
       pull-requests: read

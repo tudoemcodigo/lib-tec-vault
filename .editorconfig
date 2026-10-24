@@ -21,6 +21,9 @@ trim_trailing_whitespace = false
 
 [*.cs]
 
+# Cabeçalho de arquivo (Apache 2.0 com atribuição)
+file_header_template = --------------------------------------------------------------------------------------------------------------------\n<copyright file="{fileName}" company="Tudo em Código">\n  Copyright (c) 2026 Roberto Oliveira / Tudo em Código.\n  Autor: Roberto Oliveira\n  Licenciado sob a Licença Apache, Versão 2.0.\n  Consulte o arquivo LICENSE e NOTICE na raiz do repositório para obter os termos de atribuição.\n</copyright>\n--------------------------------------------------------------------------------------------------------------------
+
 # using
 dotnet_sort_system_directives_first = true
 dotnet_separate_import_directive_groups = false

@@ -4,7 +4,7 @@ rules:
   unpinned-uses:
     config:
       policies:
-        # Workflows e actions da própria organização (tudoemcodigo/tec-workflows) por tag de versão (v2);
+        # Workflows e actions da própria organização (tudoemcodigo/tec-workflows) por tag de versão (v1);
         # actions de terceiros sempre fixadas por SHA
         "tudoemcodigo/*": ref-pin
         "*": hash-pin

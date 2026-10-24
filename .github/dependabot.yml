@@ -63,6 +63,9 @@ updates:
       default-days: 7
     commit-message:
       prefix: "ci"
+    ignore:
+      - dependency-name: "tudoemcodigo/tec-workflows*"
+        update-types: ["version-update:semver-major"]
     groups:
       actions:
         patterns: ["*"]

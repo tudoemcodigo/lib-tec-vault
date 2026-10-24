@@ -509,6 +509,18 @@ relatorios/
 packages.local.lock.json
 
 # Pastas de trabalho de ferramentas de IA
+.trae/
+.tabnine/
+.qodo/
+.opencode/
+.kiro/
+.junie/
+.goose/
+.codeium/
+.bito/
+.amazonq/
+.agent/
+.agents/
 .claude/
 .remember/
 .superpowers/

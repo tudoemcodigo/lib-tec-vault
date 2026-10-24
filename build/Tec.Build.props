@@ -46,6 +46,7 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+    <CentralPackageVersionOverrideEnabled>false</CentralPackageVersionOverrideEnabled>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
     <NuGetAudit>true</NuGetAudit>
@@ -78,8 +79,7 @@
     <EnablePackageValidation>true</EnablePackageValidation>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
-    <IncludeSymbols>true</IncludeSymbols>
-    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <DebugType>embedded</DebugType>
   </PropertyGroup>
 
   <!-- Metadados NuGet comuns (Description e PackageTags ficam no csproj de cada pacote) -->
@@ -87,9 +87,9 @@
     <PackageId Condition="'$(PackageId)' == ''">$(MSBuildProjectName)</PackageId>
     <Authors>Roberto Oliveira</Authors>
     <Company>Tudo em Código</Company>
-    <Copyright>Copyright © Tudo em Código</Copyright>
+    <Copyright>Copyright © 2026 Roberto Oliveira / Tudo em Código</Copyright>
     <PackageProjectUrl>https://www.tudoemcodigo.com</PackageProjectUrl>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageIcon>Logo.png</PackageIcon>
     <PackageIconUrl>https://raw.githubusercontent.com/tudoemcodigo/lib-$(TecComponent.ToLowerInvariant().Replace('.', '-'))/main/Images/Logo.png</PackageIconUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -99,6 +99,7 @@
 
   <ItemGroup Condition="'$(IsTecPackage)' == 'true'">
     <None Include="$(TecRepoRoot)Images/Logo.png" Pack="true" PackagePath="\" Visible="false" />
+    <None Condition="Exists('$(TecRepoRoot)NOTICE')" Include="$(TecRepoRoot)NOTICE" Pack="true" PackagePath="\" Visible="false" />
     <!-- README do pacote: o da pasta do projeto, se existir; senão o README da raiz do repositório -->
     <None Condition="Exists('$(MSBuildProjectDirectory)/README.md')" Include="$(MSBuildProjectDirectory)/README.md" Pack="true" PackagePath="\" Visible="false" />
     <None Condition="!Exists('$(MSBuildProjectDirectory)/README.md')" Include="$(TecRepoRoot)README.md" Pack="true" PackagePath="\" Visible="false" />

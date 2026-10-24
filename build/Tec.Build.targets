@@ -32,15 +32,28 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- TEC.Vault.AzureKeyVault -> componente TEC.Vault -> ..\TEC.Vault\TEC.Vault.AzureKeyVault\TEC.Vault.AzureKeyVault.csproj -->
+    <!-- TEC.Vault.AzureKeyVault -> componente TEC.Vault -> ..\TEC.Vault\TEC.Vault.AzureKeyVault\TEC.Vault.AzureKeyVault.csproj (ou ..\lib-tec-vault) -->
     <TecReference Update="@(TecReference)" TecComponent="$([System.Text.RegularExpressions.Regex]::Match('%(Identity)', '^TEC\.[^.]+'))" />
     <TecReference Update="@(TecReference)" TecProjectPath="$(TecComponentsRoot)%(TecComponent)/%(Identity)/%(Identity).csproj" />
+    <TecReference Update="@(TecReference)" TecProjectPathAlt="$(TecComponentsRoot)lib-$([System.String]::Copy('%(TecComponent)').ToLowerInvariant().Replace('.', '-'))/%(Identity)/%(Identity).csproj" />
+    <!-- Avaliar Exists em Condition com metadados customizados causa MSB4191. Materialize o resultado no item e filtre por metadata. -->
+    <TecReference Update="@(TecReference)"
+                  TecProjectPathExists="$([System.IO.File]::Exists('%(TecProjectPath)'))"
+                  TecProjectPathAltExists="$([System.IO.File]::Exists('%(TecProjectPathAlt)'))" />
+    <TecReference Update="@(TecReference-&gt;WithMetadataValue('TecProjectPathExists', 'False')-&gt;WithMetadataValue('TecProjectPathAltExists', 'True'))"
+                  TecProjectPath="%(TecProjectPathAlt)" />
     <TecReference Update="@(TecReference)" TecLocal="False" />
     <TecReference Update="@(TecReference)" TecLocal="$([System.IO.File]::Exists('%(TecProjectPath)'))" Condition="'$(TecUseLocalProjects)' == 'true'" />
 
     <ProjectReference Include="@(TecReference->WithMetadataValue('TecLocal', 'True')->'%(TecProjectPath)')" />
     <PackageReference Include="@(TecReference->WithMetadataValue('TecLocal', 'False'))" />
   </ItemGroup>
+
+  <!-- Aviso amigável caso modo local esteja ativado mas algum projeto não tenha sido encontrado nas pastas vizinhas -->
+  <Target Name="TecWarnMissingLocalProjects" BeforeTargets="CollectPackageReferences" Condition="'$(TecUseLocalProjects)' == 'true'">
+    <Warning Condition="'@(TecReference)' != '' and '%(TecReference.TecLocal)' == 'False'"
+             Text="Modo local ativado (TecUseLocalProjects=true), mas o projeto local para '%(TecReference.Identity)' não foi encontrado em '%(TecReference.TecProjectPath)'. A dependência continuará como pacote publicado." />
+  </Target>
 
   <!-- Dependência de componente só pela convenção: evita PackageReference TEC.* "solto", que ignora o modo local -->
   <Target Name="TecValidateReferences" BeforeTargets="CollectPackageReferences">
