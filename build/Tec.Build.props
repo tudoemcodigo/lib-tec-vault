@@ -93,6 +93,7 @@
     <PackageIcon>Logo.png</PackageIcon>
     <PackageIconUrl>https://raw.githubusercontent.com/tudoemcodigo/lib-$(TecComponent.ToLowerInvariant().Replace('.', '-'))/main/Images/Logo.png</PackageIconUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageReleaseNotes Condition="'$(PackageReleaseNotes)' == ''">https://github.com/tudoemcodigo/lib-$(TecComponent.ToLowerInvariant().Replace('.', '-'))/blob/main/CHANGELOG.md</PackageReleaseNotes>
     <RepositoryType>git</RepositoryType>
     <RepositoryUrl>https://github.com/tudoemcodigo/lib-$(TecComponent.ToLowerInvariant().Replace('.', '-'))</RepositoryUrl>
   </PropertyGroup>
