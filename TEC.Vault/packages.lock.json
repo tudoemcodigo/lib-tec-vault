@@ -62,7 +62,7 @@
         "type": "Direct",
         "requested": "[0.0.1, )",
         "resolved": "0.0.1",
-        "contentHash": "Iq96VEtDafQN75ZX58L0cqqGIsvN0R7u7t9gYQKYv0JXpXmo+AE4c0i1He1dENsOSwCt2t7Z7on28infVRUhHQ==",
+        "contentHash": "L9gbO8YRbv9EY0e7FyMho3Mkodq8SwBxfPk68B4QQ401PZSOeGy7V0X7IHI8o48qAbaBcJiaOa3DTdHDZn7g9A==",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.12"
         }
@@ -201,7 +201,7 @@
         "type": "Direct",
         "requested": "[0.0.1, )",
         "resolved": "0.0.1",
-        "contentHash": "Iq96VEtDafQN75ZX58L0cqqGIsvN0R7u7t9gYQKYv0JXpXmo+AE4c0i1He1dENsOSwCt2t7Z7on28infVRUhHQ==",
+        "contentHash": "L9gbO8YRbv9EY0e7FyMho3Mkodq8SwBxfPk68B4QQ401PZSOeGy7V0X7IHI8o48qAbaBcJiaOa3DTdHDZn7g9A==",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2"
         }
