@@ -407,7 +407,7 @@ public class HardeningRegressionTests : TempFolderTest
 
         public string ProviderName => "Toggle";
 
-        private static SecretProperties Db => new() { Name = "db", Version = "1", Enabled = true };
+        private static SecretProperties Db => new() { Name = "App--db", Version = "1", Enabled = true };
 
         public Task<Result<VaultSecret>> GetSecretAsync(string name, string? version = null, CancellationToken cancellationToken = default) =>
             Task.FromResult(Fail ? Result<VaultSecret>.Failure(VaultErrors.Unavailable()) : Result<VaultSecret>.Success(new VaultSecret(Db, "valor")));
