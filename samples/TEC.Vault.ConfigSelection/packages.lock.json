@@ -489,7 +489,7 @@
         "type": "CentralTransitive",
         "requested": "[0.0.1, )",
         "resolved": "0.0.1",
-        "contentHash": "kI8MSdOBPz86eZ0/pIHsiQAgn2NO+0kX9FkvbxBV8euooipzJu5Dnf1X9HtQTe0lThJ8x7sm1hMbeVCEvTXMAw==",
+        "contentHash": "3fe58U1Ac9H833/l6Cn3yi+8GZt7Ikziuko67L3mc2c7YHvD8wIvi3wyshzWnlVgEcKDCdk6AfwVUwMYdVviaA==",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.13"
         }
