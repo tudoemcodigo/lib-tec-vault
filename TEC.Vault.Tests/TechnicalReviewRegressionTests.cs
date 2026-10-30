@@ -512,7 +512,11 @@ public class TechnicalReviewRegressionTests : TempFolderTest
     }
 
     private static IConfiguration TrackedSection() =>
-        new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Vault:Provider"] = "Rastreado" }).Build().GetSection("Vault");
+        new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Vault:Provider"] = "Rastreado",
+            ["Vault:Configuration:Prefix"] = "App--"
+        }).Build().GetSection("Vault");
 
     [Test]
     public async Task Store_created_by_the_configuration_source_is_disposed_with_it()
@@ -546,7 +550,7 @@ public class TechnicalReviewRegressionTests : TempFolderTest
     public async Task Store_passed_by_the_application_is_not_disposed_by_the_source()
     {
         var tracker = new Tracker();
-        var root = new ConfigurationBuilder().AddTecVault(new TrackedReader(tracker)).Build();
+        var root = new ConfigurationBuilder().AddTecVault(new TrackedReader(tracker), o => o.Prefix = "App--").Build();
 
         ((IDisposable)root).Dispose();
 

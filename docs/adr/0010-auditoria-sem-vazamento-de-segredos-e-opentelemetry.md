@@ -17,14 +17,14 @@ O maior risco de vazamento de credenciais na era moderna não reside em invasõe
 ## Decisão
 Blindar toda a camada de telemetria, log e OpenTelemetry do `TEC.Vault` através de controles rígidos de segurança:
 1. **Mascaramento Nativo em Objetos de Segredo**:
-   - As estruturas e classes que encapsulam segredos (`SecretValue`, `SecretBundle`) sobrescrevem `ToString()` para retornar um texto fixo mascarado (`***`), impedindo vazamento acidental em serializações ou logs genéricos.
+   - As classes que encapsulam valores sensíveis (`VaultSecret` e `ImportCertificateOptions`, entre outras) sobrescrevem `ToString()` para mascarar o valor (`Value = ***`), impedindo vazamento acidental em serializações ou logs genéricos.
 2. **Logs Estruturados com Alta Performance (`LoggerMessage`)**:
    - Todos os logs de auditoria utilizam geradores de código `LoggerMessage`, garantindo zero alocação e impedindo interpolação manual de strings.
    - Logs de escrita (`WriteSucceeded`) e leituras confidenciais registram apenas o nome do item e o tempo de execução em milissegundos — **nunca o valor do segredo**.
 3. **Higienização de Entradas Não Confiáveis (`SensitiveDataMasker`)**:
    - Nomes de itens recusados por erro de validação (que podem conter senhas digitadas por engano pelo operador ou payloads de ataque) nunca são impressos em claro no log: são registrados apenas como o tamanho da entrada e o HMAC com chave aleatória do processo (`SensitiveDataMasker.DescribeUntrusted`).
 4. **Métricas Sem Explosão de Cardinalidade**:
-   - O `Meter` `TEC.Vault` registra durações e contadores de operações (`vault.operations`, `vault.circuit.state_changes`) utilizando tags genéricas (`vault.provider`, `vault.operation`, `error.type`). **Nenhum nome de item, versão ou valor é utilizado como dimensão/tag de métrica**.
+   - O `Meter` `TEC.Vault` registra a duração das operações (`vault.operation.duration`) e contadores (`vault.cache.requests`, `vault.circuit.state_changes`) utilizando tags genéricas (`vault.provider`, `vault.operation`, `error.type`). **Nenhum nome de item, versão ou valor é utilizado como dimensão/tag de métrica**.
 
 ## Consequências
 ### Positivas

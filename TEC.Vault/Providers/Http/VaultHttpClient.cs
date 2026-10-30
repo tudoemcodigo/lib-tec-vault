@@ -88,12 +88,14 @@ public sealed class VaultHttpException : Exception
 
 /// <summary>
 /// Cliente HTTP dos provedores sem SDK (uso pelos provedores): retentativa com backoff exponencial e <c>Retry-After</c>,
-/// tempo limite por tentativa, autenticação por token renovada uma vez em 401 (e em 403, se pedido), limite de tamanho de resposta e
-/// redirecionamento desligado. Thread-safe; uma instância por provedor.
+/// tempo limite por tentativa (também na leitura do corpo), autenticação por token renovada uma vez em 401 (e em 403, se pedido),
+/// limite de tamanho de resposta e redirecionamento desligado. Thread-safe; uma instância por provedor.
 /// </summary>
 /// <remarks>
-/// Só operações idempotentes são repetidas após falha de rede, tempo limite ou 5xx; as demais só após 429 (a requisição foi
-/// recusada antes de ser processada). Assim uma criação nunca é aplicada duas vezes por retentativa.
+/// <para>Só operações idempotentes são repetidas após falha de rede, tempo limite ou 5xx; as demais só após 429 (a requisição foi
+/// recusada antes de ser processada). Assim uma criação nunca é aplicada duas vezes por retentativa.</para>
+/// <para><see cref="VaultHttpSettings.NetworkTimeout"/> vale para a espera dos cabeçalhos de cada tentativa e, de novo, para a
+/// leitura do corpo (<see cref="ReadBytesAsync"/>): um cofre que manda os cabeçalhos e para de enviar o corpo não prende a chamada.</para>
 /// </remarks>
 public sealed class VaultHttpClient : IDisposable
 {
@@ -177,6 +179,15 @@ public sealed class VaultHttpClient : IDisposable
     public Uri BaseAddress => _client.BaseAddress!;
 
     /// <summary>
+    /// Para cofres que informam o tipo do erro no corpo, e não no status (ex.: AWS, que responde HTTP 400 com <c>__type</c> =
+    /// <c>ThrottlingException</c> ou <c>ExpiredTokenException</c>): recebe o status e o corpo de cada resposta 4xx (lido com o teto
+    /// de <see cref="VaultHttpSettings.MaxResponseBytes"/> e o tempo limite de rede) e devolve o status equivalente (ex.: 429 ou
+    /// 401). O status devolvido vale para a retentativa, para o novo login e para a conversão do erro, e o corpo continua legível
+    /// na resposta devolvida. <c>null</c> (padrão): o status é usado como veio.
+    /// </summary>
+    public Func<HttpStatusCode, ReadOnlyMemory<byte>, HttpStatusCode>? ErrorStatusMapper { get; init; }
+
+    /// <summary>
     /// Envia a requisição criada por <paramref name="createRequest"/> (chamada de novo a cada tentativa) e devolve a resposta,
     /// qualquer que seja o status. O chamador descarta a resposta.
     /// </summary>
@@ -227,6 +238,9 @@ public sealed class VaultHttpClient : IDisposable
                     continue;
                 }
             }
+
+            if (ErrorStatusMapper is { } mapStatus && (int)response.StatusCode is >= 400 and < 500)
+                await MapErrorStatusAsync(response, mapStatus, cancellationToken).ConfigureAwait(false);
 
             // Token expirado ou revogado no cofre: um novo login, uma vez por chamada (não conta como tentativa). Em 403, só se
             // o token for o problema: um 403 de política com token válido não descarta o token compartilhado nem refaz o login
@@ -320,8 +334,13 @@ public sealed class VaultHttpClient : IDisposable
         }
     }
 
-    /// <summary>Lê o corpo, respeitando <see cref="VaultHttpSettings.MaxResponseBytes"/>.</summary>
+    /// <summary>
+    /// Lê o corpo, respeitando <see cref="VaultHttpSettings.MaxResponseBytes"/> e <see cref="VaultHttpSettings.NetworkTimeout"/>
+    /// (contado do início da leitura). O chamador zera o array devolvido se ele puder conter valores.
+    /// </summary>
     /// <exception cref="VaultResponseTooLargeException">Resposta acima do limite.</exception>
+    /// <exception cref="TimeoutException">O corpo não chegou inteiro dentro do tempo limite de rede.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> cancelado.</exception>
     public async Task<byte[]> ReadBytesAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(response);
@@ -329,6 +348,20 @@ public sealed class VaultHttpClient : IDisposable
         if (response.Content.Headers.ContentLength > limit)
             throw new VaultResponseTooLargeException(limit);
 
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(_settings.NetworkTimeout);
+        try
+        {
+            return await ReadLimitedAsync(response, limit, timeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException($"O cofre não terminou de enviar a resposta em {_settings.NetworkTimeout.TotalSeconds:0} segundos.");
+        }
+    }
+
+    private static async Task<byte[]> ReadLimitedAsync(HttpResponseMessage response, int limit, CancellationToken cancellationToken)
+    {
         var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         await using (stream.ConfigureAwait(false))
         {
@@ -370,6 +403,30 @@ public sealed class VaultHttpClient : IDisposable
 
     /// <inheritdoc />
     public void Dispose() => _client.Dispose();
+
+    /// <summary>
+    /// Lê o corpo de uma resposta 4xx (com teto e tempo limite), troca o status pelo de <see cref="ErrorStatusMapper"/> e devolve o
+    /// corpo à resposta (lido de novo por quem a recebe). Descarta a resposta se a leitura falhar.
+    /// </summary>
+    private async Task MapErrorStatusAsync(HttpResponseMessage response, Func<HttpStatusCode, ReadOnlyMemory<byte>, HttpStatusCode> map,
+        CancellationToken cancellationToken)
+    {
+        byte[] body;
+        try
+        {
+            body = await ReadBytesAsync(response, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            response.Dispose();
+            throw;
+        }
+
+        var contentType = response.Content.Headers.ContentType;
+        response.Content.Dispose();
+        response.Content = new ByteArrayContent(body) { Headers = { ContentType = contentType } };
+        response.StatusCode = map(response.StatusCode, body);
+    }
 
     private async Task<bool> IsTokenRejectedAsync(string token, CancellationToken cancellationToken)
     {

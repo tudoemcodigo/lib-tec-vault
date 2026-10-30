@@ -388,7 +388,7 @@ public class HardeningRegressionTests : TempFolderTest
         using var logs = new CapturingLoggerProvider();
         using var loggerFactory = new LoggerFactory([logs]);
         var root = new Microsoft.Extensions.Configuration.ConfigurationBuilder()
-            .AddTecVault(reader, o => o.Optional = true, loggerFactory: loggerFactory)
+            .AddTecVault(reader, o => { o.Prefix = "App--"; o.Optional = true; }, loggerFactory: loggerFactory)
             .Build();
 
         reader.Fail = true;

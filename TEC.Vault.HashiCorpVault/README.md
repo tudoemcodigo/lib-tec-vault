@@ -74,4 +74,4 @@ builder.Services.AddTecVault(vault => vault.UseHashiCorpVault(o =>
 
 Todas as opções (`Namespace`, `Kv`, `Transit`, `Pki`, `Stores`, `MaxListItems`, `Http`...), política de menor privilégio, conversão de erros, OpenBao e desenvolvimento local: [docs/provedor-hashicorp-vault.md](https://github.com/tudoemcodigo/lib-tec-vault/blob/main/docs/provedor-hashicorp-vault.md).
 
-`net8.0` e `net10.0` · Native AOT · [MIT](https://github.com/tudoemcodigo/lib-tec-vault/blob/main/LICENSE) · Roberto Oliveira, equipe Tudo em Código
+`net10.0` · Native AOT · [Apache 2.0](https://github.com/tudoemcodigo/lib-tec-vault/blob/main/LICENSE) · Roberto Oliveira, equipe Tudo em Código

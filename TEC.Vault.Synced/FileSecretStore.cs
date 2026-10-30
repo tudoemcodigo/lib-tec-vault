@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 using TEC.Vault.Synced.Internal;
 
@@ -28,7 +30,7 @@ public sealed class SecretsFileOptions
     /// <summary>Tamanho máximo do arquivo (1 byte a 16 MB). Padrão: 1 MB.</summary>
     public int MaxFileBytes { get; set; } = 1024 * 1024;
 
-    /// <summary>Quantidade máxima de segredos no arquivo (1 a 10.000). Padrão: 1.000.</summary>
+    /// <summary>Quantidade máxima de segredos no arquivo (1 a 10.000). Padrão: 1.000. Acima disso a leitura falha com <c>VaultErrors.TooManyItems</c>.</summary>
     public int MaxItems { get; set; } = 1000;
 
     internal (string Path, SecretsFileFormat Format) Validate()
@@ -63,7 +65,10 @@ public sealed class SecretsFileOptions
 /// e de exports (<c>infisical export</c>, <c>bws secret list</c> convertido).
 /// </summary>
 /// <remarks>
-/// <para>O arquivo é relido só quando muda (tamanho ou data de modificação); a leitura de um segredo não reabre o arquivo.</para>
+/// <para>Cada consulta lê o arquivo (com o teto de <see cref="SecretsFileOptions.MaxFileBytes"/>) e compara o hash SHA-256 do
+/// conteúdo com o da leitura anterior: o conteúdo só é interpretado de novo quando muda. Assim uma troca que mantém tamanho e data
+/// de modificação (cópia com <c>cp -p</c>, troca atômica no mesmo segundo, relógio de baixa resolução) não deixa valores antigos em
+/// uso. Para evitar a E/S a cada leitura, ative o cache do núcleo (<c>EnableSecretCache</c> ou <c>Vault:Cache:Duration</c>).</para>
 /// <para>Nomes repetidos (sem diferenciar maiúsculas) e nomes fora da regra do provedor fazem a leitura falhar: num arquivo único,
 /// um nome inválido é erro de geração do arquivo, e ignorá-lo esconderia o problema.</para>
 /// </remarks>
@@ -76,7 +81,7 @@ public sealed class FileSecretStore : SyncedSecretStoreBase
     private readonly string _path;
     private readonly SecretsFileFormat _format;
     private readonly Lock _sync = new();
-    private (long Length, DateTime WriteTime, IReadOnlyList<SyncedEntry> Entries)? _cache;
+    private (byte[] Hash, IReadOnlyList<SyncedEntry> Entries)? _cache;
 
     /// <summary>Cria o leitor. As opções são validadas aqui.</summary>
     /// <exception cref="InvalidOperationException">Opções inválidas.</exception>
@@ -90,22 +95,20 @@ public sealed class FileSecretStore : SyncedSecretStoreBase
 
     private protected override IReadOnlyList<SyncedEntry> ReadAll(CancellationToken cancellationToken)
     {
-        var info = new FileInfo(_path);
-        if (!info.Exists)
+        if (!File.Exists(_path))
             throw new FileNotFoundException("Arquivo de segredos ausente.");
-
-        lock (_sync)
-        {
-            if (_cache is { } cached && cached.Length == info.Length && cached.WriteTime == info.LastWriteTimeUtc)
-                return cached.Entries;
-        }
 
         var content = SyncedText.ReadFile(_path, _options.MaxFileBytes, out var updatedOn)
             ?? throw new SyncedFormatException("arquivo de segredos acima de MaxFileBytes");
-        var pairs = _format == SecretsFileFormat.Json ? SecretFileParsers.ParseJson(content) : SecretFileParsers.ParseDotEnv(content);
+        var hash = SHA256.HashData(MemoryMarshal.AsBytes(content.AsSpan()));
+        lock (_sync)
+        {
+            if (_cache is { } cached && cached.Hash.AsSpan().SequenceEqual(hash))
+                return cached.Entries;   // mesmo conteúdo: sem interpretar de novo
+        }
 
-        if (pairs.Count > _options.MaxItems)
-            throw new SyncedFormatException($"o arquivo tem mais de {_options.MaxItems} segredos (MaxItems)");
+        var pairs = _format == SecretsFileFormat.Json ? SecretFileParsers.ParseJson(content) : SecretFileParsers.ParseDotEnv(content);
+        EnsureListLimit(pairs.Count, _options.MaxItems);
 
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var entries = new List<SyncedEntry>(pairs.Count);
@@ -121,7 +124,7 @@ public sealed class FileSecretStore : SyncedSecretStoreBase
         }
 
         lock (_sync)
-            _cache = (info.Length, info.LastWriteTimeUtc, entries);
+            _cache = (hash, entries);
         return entries;
     }
 

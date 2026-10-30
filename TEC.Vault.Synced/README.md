@@ -62,4 +62,4 @@ builder.Services.AddTecVault(vault => vault.UseDirectory(o => o.Path = "/mnt/sec
 
 Opções de cada fonte, layout `..data` do Kubernetes, versão por HMAC e receitas prontas (ESO + Bitwarden, ESO + Infisical, Vault Agent, CSI driver, `infisical run`, `bws run`): [docs/provedor-synced.md](https://github.com/tudoemcodigo/lib-tec-vault/blob/main/docs/provedor-synced.md) e o guia dedicado [Segredos em Variáveis de Ambiente](https://github.com/tudoemcodigo/lib-tec-vault/blob/main/docs/segredos-em-variaveis-de-ambiente.md).
 
-`net8.0` e `net10.0` · Native AOT · [MIT](https://github.com/tudoemcodigo/lib-tec-vault/blob/main/LICENSE) · Roberto Oliveira, equipe Tudo em Código
+`net10.0` · Native AOT · [Apache 2.0](https://github.com/tudoemcodigo/lib-tec-vault/blob/main/LICENSE) · Roberto Oliveira, equipe Tudo em Código

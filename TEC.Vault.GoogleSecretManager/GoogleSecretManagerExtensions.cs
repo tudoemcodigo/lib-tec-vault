@@ -1,15 +1,20 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TEC.Vault.DependencyInjection;
+using TEC.Vault.Providers;
 
 namespace TEC.Vault.GoogleSecretManager;
 
-/// <summary>Métodos de extensão para registro do provedor Google Cloud Secret Manager.</summary>
+/// <summary>Registro do provedor Google Cloud Secret Manager (em código e por configuração).</summary>
 public static class GoogleSecretManagerExtensions
 {
-    /// <summary>
-    /// Configura o uso do Google Cloud Secret Manager para a gestão de segredos.
-    /// </summary>
+    /// <summary>Usa o Google Cloud Secret Manager como provedor de segredos. As opções são validadas aqui.</summary>
+    /// <example>
+    /// <code>
+    /// builder.Services.AddTecVault(vault => vault.UseGoogleSecretManager(o => o.ProjectId = "meu-projeto-prod"));
+    /// </code>
+    /// </example>
+    /// <exception cref="InvalidOperationException">Opções inválidas ou nenhuma credencial.</exception>
     public static VaultBuilder UseGoogleSecretManager(this VaultBuilder builder, Action<GoogleSecretManagerOptions> configure)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -17,47 +22,55 @@ public static class GoogleSecretManagerExtensions
 
         var options = new GoogleSecretManagerOptions();
         configure(options);
+        options.HostEnvironment ??= VaultEnvironment.FindHostEnvironment(builder.Services);
+        options.Validate();
 
         return builder.UseSecretStore(sp => new GoogleSecretManagerSecretStore(options, sp.GetService<ILogger<GoogleSecretManagerSecretStore>>()));
     }
 
     /// <summary>
-    /// Registra o provedor Google Cloud Secret Manager no catálogo para seleção via appsettings.json (<c>"Vault:Provider": "GoogleSecretManager"</c>).
+    /// Adiciona o Google Cloud Secret Manager aos provedores disponíveis para a configuração
+    /// (<c>Vault:Provider = GoogleSecretManager</c>). Opções lidas de <c>Vault:GoogleSecretManager</c>: <c>ProjectId</c>,
+    /// <c>Endpoint</c>, <c>AccessTokenVariable</c>, <c>CredentialsJsonFile</c>, <c>CredentialsJsonVariable</c>,
+    /// <c>UseMetadataServer</c>, <c>MaxListItems</c>, <c>MaxRetries</c>, <c>NetworkTimeout</c> e a subseção <c>CircuitBreaker</c>.
     /// </summary>
-    public static VaultProviderCatalog AddGoogleSecretManager(this VaultProviderCatalog catalog)
+    /// <remarks>
+    /// <c>AccessToken</c> em texto é recusado: o token vem de variável de ambiente (ou de uma fonte sem segredo na configuração,
+    /// como Service Account em arquivo montado ou Metadata Server). Chave desconhecida na seção derruba a inicialização.
+    /// <paramref name="configure"/> roda depois da configuração (ex.: <c>Http.Handler</c> ou <c>AllowedTokenHosts</c>).
+    /// </remarks>
+    public static VaultProviderCatalog AddGoogleSecretManager(this VaultProviderCatalog catalog, Action<GoogleSecretManagerOptions>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(catalog);
-
-        return catalog.Add(new VaultProviderRegistration(
-            GoogleSecretManagerSecretStore.Provider,
-            VaultStores.Secrets,
-            (builder, settings, _) => builder.UseGoogleSecretManager(options =>
+        return catalog.Add(new VaultProviderRegistration(GoogleSecretManagerSecretStore.Provider, VaultStores.Secrets,
+            (builder, settings, _) => builder.UseGoogleSecretManager(o =>
             {
-                if (settings.GetString("ProjectId") is { } projectId)
-                    options.ProjectId = projectId;
-                if (settings.GetString("Endpoint") is { } endpoint)
-                    options.Endpoint = new Uri(endpoint);
-                if (settings.GetString("AccessToken") is { } token)
-                    options.AccessToken = token;
-                if (settings.GetString("CredentialsJsonFile") is { } file)
-                    options.CredentialsJsonFile = file;
-                if (settings.GetInt32("MaxListItems") is { } maxList)
-                    options.MaxListItems = maxList;
+                Read(settings, o);
+                configure?.Invoke(o);
             }),
-            createSecretReader: (settings, loggerFactory) =>
+            (settings, loggerFactory) =>
             {
                 var options = new GoogleSecretManagerOptions();
-                if (settings.GetString("ProjectId") is { } projectId)
-                    options.ProjectId = projectId;
-                if (settings.GetString("Endpoint") is { } endpoint)
-                    options.Endpoint = new Uri(endpoint);
-                if (settings.GetString("AccessToken") is { } token)
-                    options.AccessToken = token;
-                if (settings.GetString("CredentialsJsonFile") is { } file)
-                    options.CredentialsJsonFile = file;
-
+                Read(settings, options);
+                configure?.Invoke(options);
                 return new GoogleSecretManagerSecretStore(options, loggerFactory?.CreateLogger<GoogleSecretManagerSecretStore>());
-            }
-        ));
+            }));
+    }
+
+    private static void Read(VaultSettings settings, GoogleSecretManagerOptions options)
+    {
+        settings.RejectInlineSecret("AccessToken", "AccessTokenVariable", "CredentialsJsonFile");
+
+        options.ProjectId = settings.GetString("ProjectId") ?? options.ProjectId;
+        options.Endpoint = settings.GetUri("Endpoint") ?? options.Endpoint;
+        options.AccessTokenVariable = settings.GetString("AccessTokenVariable") ?? options.AccessTokenVariable;
+        options.CredentialsJsonFile = settings.GetString("CredentialsJsonFile") ?? options.CredentialsJsonFile;
+        options.CredentialsJsonVariable = settings.GetString("CredentialsJsonVariable") ?? options.CredentialsJsonVariable;
+        options.UseMetadataServer = settings.GetBoolean("UseMetadataServer") ?? options.UseMetadataServer;
+        options.MaxListItems = settings.GetInt32("MaxListItems", 1, 1_000_000) ?? options.MaxListItems;
+        options.Http.MaxRetries = settings.GetInt32("MaxRetries", 0, 10) ?? options.Http.MaxRetries;
+        options.Http.NetworkTimeout = settings.GetTimeSpan("NetworkTimeout") ?? options.Http.NetworkTimeout;
+        options.Http.CircuitBreaker.Read(settings);
+        settings.EnsureNoUnknownKeys();
     }
 }

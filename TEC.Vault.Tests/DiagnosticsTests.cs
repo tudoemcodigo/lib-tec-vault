@@ -14,7 +14,7 @@ using TEC.Core.Common.Results;
 
 namespace TEC.Vault.Tests;
 
-/// <summary>Métricas (Meter "TEC.Vault") e compatibilidade .NET 8 × .NET 9+ da carga de certificados.</summary>
+/// <summary>Métricas (Meter "TEC.Vault") e carga de certificados.</summary>
 public class DiagnosticsTests
 {
     /// <summary>Medições capturadas do Meter do cofre (os testes rodam em paralelo: filtre pelo que o teste gerou).</summary>
@@ -148,17 +148,7 @@ public class DiagnosticsTests
         await Assert.That(mine.Any(a => a.DisplayName.Contains(name, StringComparison.Ordinal))).IsFalse();
     }
 
-    // ---------- Carga de certificados: X509CertificateLoader (.NET 9+) × construtor (.NET 8) ----------
-
-    [Test]
-    public async Task Certificate_loader_implementation_matches_runtime()
-    {
-#if NET9_0_OR_GREATER
-        await Assert.That(VaultCertificateLoader.UsesCertificateLoader).IsTrue();
-#else
-        await Assert.That(VaultCertificateLoader.UsesCertificateLoader).IsFalse();
-#endif
-    }
+    // ---------- Carga de certificados (X509CertificateLoader) ----------
 
     [Test]
     public async Task LoadCertificate_loads_der_and_rejects_pfx()

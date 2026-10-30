@@ -16,15 +16,15 @@ Este arquivo complementa as instruções herdadas de `AGENT_BASE.md`. O TEC.Vaul
 
 ## Mapa da implementação
 
-- `TEC.Vault/`: biblioteca multi-target (`net8.0` e `net10.0`), interfaces, modelos, `VaultErrors`, validação, auditoria, métricas, cache com proteção contra *stampede*, `IConfiguration` com recarga, health check, envelope, provedor encadeado (fallback), escolha por configuração e base para provedores. Depende só de `TEC.Core` e `Microsoft.Extensions.*` (sem SDK de nuvem).
-- `TEC.Vault.AzureKeyVault/`: Azure Key Vault (segredos, chaves, certificados), autenticação sem segredo (Managed Identity, Workload Identity, Developer). **Não compatível com Native AOT** (SDK Azure gera avisos de trimming no decodificador PKCS#8 EC).
-- `TEC.Vault.AwsSecretsManager/`: AWS Secrets Manager via HTTP SigV4 nativo (JSON protocol 1.1, sem SDK pesado). ✅ 100% Native AOT.
-- `TEC.Vault.GoogleSecretManager/`: Google Cloud Secret Manager via API REST v1 nativa (Service Account JSON ou Metadata Server GKE/Cloud Run). ✅ 100% Native AOT.
+- `TEC.Vault/`: biblioteca `net10.0` (alvo único), interfaces, modelos, `VaultErrors`, validação, auditoria, métricas, cache com proteção contra *stampede*, `IConfiguration` com recarga, health check, envelope, provedor encadeado (fallback), escolha por configuração e base para provedores. Depende só de `TEC.Core`, `Polly.Core` (circuit breaker) e `Microsoft.Extensions.*` (sem SDK de nuvem).
+- `TEC.Vault.AzureKeyVault/`: Azure Key Vault (segredos, chaves, certificados), autenticação sem segredo (Managed Identity, Workload Identity, Developer). `IsAotCompatible` como os demais; o `Azure.Core` gera avisos de trimming (IL2026/IL2075) só no decodificador de PKCS#8 EC, usado por credenciais com certificado EC em PEM.
+- `TEC.Vault.AwsSecretsManager/`: AWS Secrets Manager via HTTP SigV4 nativo (JSON protocol 1.1, sem SDK pesado) sobre `VaultHttpClient` e `VaultTokenSource`; credenciais por web identity (IRSA), container (ECS/EKS Pod Identity), IMDSv2 e, por último, chaves estáticas, renovadas antes de expirar. ✅ 100% Native AOT.
+- `TEC.Vault.GoogleSecretManager/`: Google Cloud Secret Manager via API REST v1 nativa sobre `VaultHttpClient` e `VaultTokenSource` (token em variável, Service Account JSON com `token_uri` conferido ou Metadata Server GKE/Cloud Run). ✅ 100% Native AOT.
 - `TEC.Vault.HashiCorpVault/`: HashiCorp Vault e OpenBao (KV v2 com lixeira, Transit, certificados com PKI; login Kubernetes, JWT, AppRole ou token). HTTP, sem SDK.
 - `TEC.Vault.Infisical/`: Infisical (nuvem ou self-hosted), leitura e gravação de segredos via API. HTTP, sem SDK.
 - `TEC.Vault.Synced/`: Segredos já entregues por agente externo (pasta montada, variáveis de ambiente, arquivo JSON/.env — só leitura). ESO, CSI driver, Vault Agent, `infisical run`, `bws run` (Bitwarden).
 - `TEC.Vault.InMemory/`: Cofre em memória com o mesmo comportamento dos reais (criptografia real). Bloqueado fora de Development.
-- `TEC.Vault.Tests/`: 659 testes unitários por TFM (TUnit, testes de contrato, fuzzing, vazamento sob carga), 37 de integração (`[Category=Integracao]`: HashiCorp Vault real em container e Key Vault de testes, pulados com motivo sem ambiente).
+- `TEC.Vault.Tests/`: testes unitários (TUnit, testes de contrato, fuzzing, vazamento sob carga, AWS e Google sobre cofres simulados em HTTP), 37 de integração (`[Category=Integracao]`: HashiCorp Vault real em container e Key Vault de testes, pulados com motivo sem ambiente).
 - `TEC.Vault.LoadTests/`: 7 de carga rápida (`Carga-CI`) e 13 pesados (`Carga-Pesada`) sob demanda no `performance.yml`.
 - `samples/`: exemplos de uso (escolha do cofre por ambiente e gerador de carga).
 - `build/`: props/targets compartilhados.
@@ -34,11 +34,11 @@ Este arquivo complementa as instruções herdadas de `AGENT_BASE.md`. O TEC.Vaul
 ## Contratos relevantes
 
 - `Directory.Build.props` é a fonte única de versão do pacote (uma versão para os oito pacotes). A versão inicial é `0.0.1`; não introduza versões nos `.csproj`.
-- `Directory.Packages.props` pode declarar versões distintas por TFM; condições por TFM são intencionais.
+- `Directory.Packages.props` declara uma versão por pacote: o alvo é só `net10.0` (ADR 0013).
 - Dependências TEC.* são declaradas com `<TecReference Include="..." />`, não com `PackageReference` direto.
 - `TEC.Vault` **não depende de nenhum TEC.\*** em produção (só `TEC.Core`); as outras bibliotecas pedem segredos, chaves e certificados a ele em vez de lê-los da configuração.
 - `TEC.Vault.AzureKeyVault` depende de `Azure.Identity` e `Azure.Security.KeyVault.*`; `TEC.Vault.HashiCorpVault`, `TEC.Vault.AwsSecretsManager`, `TEC.Vault.GoogleSecretManager`, `TEC.Vault.Infisical`, `TEC.Vault.Synced`, `TEC.Vault.InMemory` dependem só de `TEC.Vault` e HTTP nativo.
-- Native AOT: ✅ `IsAotCompatible` em `TEC.Vault`, `TEC.Vault.AwsSecretsManager`, `TEC.Vault.GoogleSecretManager`, `TEC.Vault.HashiCorpVault`, `TEC.Vault.Infisical`, `TEC.Vault.Synced`, `TEC.Vault.InMemory` (configuração lida com `VaultSettings`, JSON com source generator/`Utf8JsonWriter`) · ❌ `TEC.Vault.AzureKeyVault` (SDK do Azure gera avisos de trimming no decodificador PKCS#8 EC; `ManagedIdentity`, `WorkloadIdentity` e `Developer` não passam por ele).
+- Native AOT: ✅ `IsAotCompatible` em todos os pacotes, inclusive `TEC.Vault.AzureKeyVault` (configuração lida com `VaultSettings`, JSON com source generator/`Utf8JsonWriter`). No Azure, o `Azure.Core` gera avisos de trimming no decodificador PKCS#8 EC, usado só por credenciais com certificado EC em PEM; `ManagedIdentity`, `WorkloadIdentity` e `Developer` não passam por ele (o mesmo que o README e `docs/provedor-azure-key-vault.md` dizem).
 - Workflows dos consumidores chamam `tudoemcodigo/tec-workflows`; confira as tags realmente publicadas antes de alterar referências.
 - A licença é Apache-2.0. Mantenha `LICENSE`, `NOTICE`, badge/README e `<PackageLicenseExpression>` coerentes; o pacote inclui `NOTICE` quando presente.
 

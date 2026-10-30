@@ -266,7 +266,7 @@ public class DirectorySecretStoreTests : TempFolderTest
 
         var result = await Store(o => o.MaxItems = 2).ListSecretsAsync();
 
-        await Assert.That(result.Error!.Code).IsEqualTo(VaultErrors.ProviderFailureCode);
+        await Assert.That(result.Error!.Code).IsEqualTo(VaultErrors.TooManyItemsCode);
     }
 
     [Test]

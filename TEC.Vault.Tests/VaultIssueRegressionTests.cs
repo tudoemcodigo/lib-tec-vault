@@ -85,23 +85,15 @@ public class VaultIssueRegressionTests
     [Test]
     public async Task Issue6_Aws_And_Google_VersionPatterns_Accept_Their_Native_Formats()
     {
-        var awsStore = new AwsSecretsManagerSecretStore(new AwsSecretsManagerOptions
-        {
-            Region = "us-east-1",
-            AccessKeyId = "test-key",
-            SecretAccessKey = "test-secret"
-        });
+        // Cofres simulados: sem rede real (antes o teste chamava a AWS e o Google de verdade)
+        using var awsStore = new AwsSecretsManagerSecretStore(Fakes.AwsTestOptions.Create(new Fakes.FakeAws()));
 
         // UUID com hífens é nativo da AWS
         var awsResult = await awsStore.GetSecretAsync("meu-segredo", "c0a80101-0000-0000-0000-000000000001");
         // Não deve falhar na validação de entrada (InvalidInput)
         await Assert.That(awsResult.Error?.Code != VaultErrors.InvalidInputCode).IsTrue();
 
-        var gcpStore = new GoogleSecretManagerSecretStore(new GoogleSecretManagerOptions
-        {
-            ProjectId = "test-project",
-            AccessToken = "fake-token"
-        });
+        using var gcpStore = new GoogleSecretManagerSecretStore(Fakes.GoogleTestOptions.Create(new Fakes.FakeGoogle()));
 
         // Dígitos ou 'latest' são nativos do Google
         var gcpResult = await gcpStore.GetSecretAsync("meu-segredo", "1");

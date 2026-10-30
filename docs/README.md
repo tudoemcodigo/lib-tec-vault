@@ -6,7 +6,7 @@
 
 # 📚 Documentação do TEC.Vault
 
-> Referência completa dos seis pacotes (`TEC.Vault`, `TEC.Vault.AzureKeyVault`, `TEC.Vault.HashiCorpVault`, `TEC.Vault.Infisical`, `TEC.Vault.Synced` e `TEC.Vault.InMemory`): como usar, opções, erros e cuidados de segurança, conferidos com o código.
+> Referência completa dos oito pacotes (`TEC.Vault`, `TEC.Vault.AzureKeyVault`, `TEC.Vault.HashiCorpVault`, `TEC.Vault.Infisical`, `TEC.Vault.AwsSecretsManager`, `TEC.Vault.GoogleSecretManager`, `TEC.Vault.Synced` e `TEC.Vault.InMemory`): como usar, opções, erros e cuidados de segurança, conferidos com o código.
 
 ## 📑 Sumário
 
@@ -30,8 +30,8 @@
 | 8 | [🌐 Provedor Azure Key Vault](provedor-azure-key-vault.md) | Opções, autenticação sem segredo, RBAC, limites e conversão de erros do Azure |
 | 9 | [🏛️ Provedor HashiCorp Vault](provedor-hashicorp-vault.md) | KV v2, Transit, PKI, métodos de login, política de menor privilégio, OpenBao, desenvolvimento local |
 | 10 | [🟣 Provedor Infisical](provedor-infisical.md) | Universal Auth, Kubernetes Auth, versões, tags, aprovação e permissões |
-| 11 | [☁️ Provedor AWS Secrets Manager](provedor-aws-secrets-manager.md) | SigV4 nativo, JSON protocol 1.1 sem SDK, credenciais de ambiente ou STS/IRSA |
-| 12 | [🔷 Provedor Google Secret Manager](provedor-google-secret-manager.md) | API REST v1 nativa, Service Account JSON, Google Metadata Server (GKE, Cloud Run) |
+| 11 | [☁️ Provedor AWS Secrets Manager](provedor-aws-secrets-manager.md) | SigV4 nativo, JSON protocol 1.1 sem SDK, IRSA, container do ECS/EKS, IMDSv2 e chaves de variáveis, tags, erros da AWS |
+| 12 | [🔷 Provedor Google Secret Manager](provedor-google-secret-manager.md) | API REST v1 nativa, token em variável, Service Account JSON com `token_uri` conferido, Google Metadata Server (GKE, Cloud Run), labels |
 | 13 | [🔗 Provedor Encadeado](provedor-encadeado.md) | Fallback ordenado multicamadas (ex.: variáveis de ambiente para cofre remoto) |
 | 14 | [📂 Provedor Synced](provedor-synced.md) | Pasta, variáveis e arquivo JSON/.env entregues por agentes, com receitas (ESO, CSI, Vault Agent, `infisical run`, `bws run`) |
 | 15 | [🌐 Segredos em Variáveis de Ambiente](segredos-em-variaveis-de-ambiente.md) | Guia dedicado para segredos em variáveis de ambiente, normalização de nomes, isolamento de escopo e fallback |
@@ -63,6 +63,8 @@ flowchart TD
     P -->|Azure Key Vault| AZ["🌐 provedor-azure-key-vault.md"]
     P -->|"HashiCorp Vault ou OpenBao"| HC["🏛️ provedor-hashicorp-vault.md"]
     P -->|Infisical| INF["🟣 provedor-infisical.md"]
+    P -->|AWS| AWS["☁️ provedor-aws-secrets-manager.md"]
+    P -->|Google Cloud| GCP["🔷 provedor-google-secret-manager.md"]
     P -->|"entregue por um agente<br/>ESO, CSI, Vault Agent, bws"| SYN["📂 provedor-synced.md"]
     P -->|"local ou testes"| MEM["🧠 provedor-em-memoria.md"]
     P -->|outro| NOVO["🧱 novo-provedor.md"]

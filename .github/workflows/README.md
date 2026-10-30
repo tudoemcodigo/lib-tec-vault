@@ -31,13 +31,13 @@
 flowchart LR
     subgraph PR["🔀 ci.yml → dotnet-ci.yml (PR / push na main)"]
         direction LR
-        CV["convenções"] ~~~ BP["build + pack"] ~~~ U["unitários<br/>net10.0 · net8.0 · sem ICU"]
+        CV["convenções"] ~~~ BP["build + pack"] ~~~ U["unitários<br/>net10.0 · sem ICU"]
         IT["integração<br/><sub>HashiCorp em container ·<br/>Key Vault só na main</sub>"] ~~~ CQ["CodeQL"]
-        OK["✅ ci-ok"] -- "só push na main" --> PV["📦 publicar-previa<br/><sub>X.Y.Z-preview.N · 6 pacotes</sub>"]
+        OK["✅ ci-ok"] -- "só push na main" --> PV["📦 publicar-previa<br/><sub>X.Y.Z-preview.N · 8 pacotes</sub>"]
     end
     subgraph REL["⌨️ release.yml → dotnet-release.yml"]
         direction LR
-        V["validar versão<br/><sub>X.Y.Z ou X.Y.Z-rc.N</sub>"] --> G["convenções · pack ·<br/>unit ×3 + cobertura · CodeQL"] --> TAG["🏷️ tag + Release"] --> PUB["📦 GitHub Packages<br/>6 pacotes"]
+        V["validar versão<br/><sub>X.Y.Z ou X.Y.Z-rc.N</sub>"] --> G["convenções · pack ·<br/>unit ×2 + cobertura · CodeQL"] --> TAG["🏷️ tag + Release"] --> PUB["📦 GitHub Packages<br/>8 pacotes"]
     end
     subgraph PERF["⌨️ performance.yml → dotnet-test.yml (só manual)"]
         RA["rapida<br/><sub>Carga-CI</sub>"] ~~~ HV["pesados<br/><sub>Carga-Pesada · fator 1/2/3/5 ·<br/>cofre_real opcional</sub>"]
@@ -50,7 +50,7 @@ flowchart LR
 | `push` na `main` (merge) | `ci.yml` | O mesmo, **com** o Key Vault de testes via OIDC, e, com `ci-ok` verde, `publicar-previa` | ✅ `<Version>-preview.N` |
 | `schedule` segunda 06:00 UTC / manual | `ci.yml` | O mesmo na `main`, **com** o Key Vault de testes via OIDC; CodeQL e auditoria com regras e vulnerabilidades novas | ❌ |
 | Manual (**Performance**) | `performance.yml` | Input `suite`: `pesadas` (padrão, `Carga-Pesada`), `rapida` (`Carga-CI`) ou `todas` | ❌ |
-| Manual (**Publicar versão**) | `release.yml` | Convenções, pack, unitários ×3 + cobertura e CodeQL, depois tag, Release e push dos 6 pacotes | ✅ `X.Y.Z` ou `-rc.N` |
+| Manual (**Publicar versão**) | `release.yml` | Convenções, pack, unitários ×2 (net10.0 e sem ICU) + cobertura e CodeQL, depois tag, Release e push dos 8 pacotes | ✅ `X.Y.Z` ou `-rc.N` |
 
 > [!NOTE]
 > Os antigos `carga.yml`, `codeql.yml` e `dependencias.yml` foram **removidos**: a carga está só no `performance.yml`
@@ -63,9 +63,9 @@ flowchart LR
 
 | Arquivo | Função |
 |---|---|
-| [`ci.yml`](ci.yml) | Validação de PR, do push na `main` (com publicação da prévia) e semanal na `main`, com `dotnet-ci.yml@v2` |
-| [`release.yml`](release.yml) | Publicação de versão estável ou `-rc.N`, com `dotnet-release.yml@v2` |
-| [`performance.yml`](performance.yml) | Testes de carga só sob demanda (manual), com `dotnet-test.yml@v2` |
+| [`ci.yml`](ci.yml) | Validação de PR, do push na `main` (com publicação da prévia) e semanal na `main`, com `dotnet-ci.yml@v1` |
+| [`release.yml`](release.yml) | Publicação de versão estável ou `-rc.N`, com `dotnet-release.yml@v1` |
+| [`performance.yml`](performance.yml) | Testes de carga só sob demanda (manual), com `dotnet-test.yml@v1` |
 | [`../scripts/integration-setup.sh`](../scripts/integration-setup.sh) | Sobe o HashiCorp Vault descartável e exporta as variáveis `TEC_TESTES_HASHICORP_*` |
 | [`../scripts/integration-teardown.sh`](../scripts/integration-teardown.sh) | Remove o container (sempre, mesmo com falha) |
 | [`../scripts/vault-dev.sh`](../scripts/vault-dev.sh) | Monta Transit e PKI (CA raiz + papel `tec-testes`) num Vault dev; usado no CI e localmente |
@@ -82,13 +82,13 @@ flowchart LR
 | `unit-tests` | `TEC.Vault.Tests /*/*/*/*[Category!=Integracao]` |
 | `integration-tests` | `TEC.Vault.Tests /*/*/*/*[Category=Integracao]` |
 | `integration-setup` / `integration-teardown` | `.github/scripts/integration-setup.sh` / `integration-teardown.sh` |
-| `azure-client-id` / `azure-tenant-id` | `vars.AZURE_CLIENT_ID` / `vars.TEC_TESTES_TENANT_ID` |
+| `azure-client-id` / `azure-tenant-id` | `vars.AZURE_CLIENT_ID` / `vars.TEC_TESTES_TENANT_ID`, **só se** `vars.TEC_ENABLE_AZURE_INTEGRATION` tiver valor; sem ela os dois ficam vazios e não há login no Azure |
 | `azure-env` | `TEC_TESTES_VAULT_URI` e `TEC_TESTES_TENANT_ID` (aplicadas **só depois** do login no Azure) |
 
 - Gatilhos: `pull_request` e `merge_group` para a `main`, `push` na `main`, `schedule` (segunda 06:00 UTC) e manual.
-- Permissões: `contents: read` no topo; o job recebe também `pull-requests`, `actions`, `security-events` (leitura),
+- Permissões: `contents: read` no topo; o job recebe também `pull-requests: read`, `actions: read`, `security-events: write` (CodeQL),
   `packages: write` (só o `publicar-previa` publica, no push na `main`) e `id-token: write` (OIDC, usado só na integração).
-- No push na `main`, depois do `ci-ok` verde, o job `publicar-previa` publica os 6 pacotes como
+- No push na `main`, depois do `ci-ok` verde, o job `publicar-previa` publica os 8 pacotes como
   `<Version do Directory.Build.props>-preview.N` (N sequencial por versão, reinicia a cada nova `<Version>`; ex.: `0.0.1-preview.3`). Se a tag `v<Version>` já existe,
   o CI não falha: valida tudo normalmente, o `build + pack` emite um `::notice::` e o `publicar-previa` é pulado (suba a
   `<Version>` para voltar a gerar prévias). Em PR nada é publicado.
@@ -111,12 +111,14 @@ saem do `ci.yml` no push na `main`).
 | `solution` / `private-feed` / `unit-tests` | Os mesmos do `ci.yml` |
 
 Sequência: valida a versão (precisa ser disparado **da `main`**; tag `vX.Y.Z` não pode existir) → convenções, pack,
-unitários ×3 (com relatório de cobertura) e CodeQL em paralelo → só com **todos** verdes cria a tag e o Release e publica
-os 6 pacotes no GitHub Packages. Sem integração (já passou no PR e no push da `main`) e sem carga.
+unitários ×2 (net10.0 com relatório de cobertura e net10.0 sem ICU) e CodeQL em paralelo → só com **todos** verdes cria a tag e o Release e publica
+os 8 pacotes no GitHub Packages. Sem integração (já passou no PR e no push da `main`) e sem carga.
 `concurrency: publicar-versao` sem cancelamento.
 
-Permissões do job: `contents: write` (tag/Release), `packages: write` (push), `actions`/`security-events: read`
-(CodeQL), `id-token: write` (exigido pela assinatura do workflow de testes reutilizável).
+Permissões do job: `contents: write` (tag/Release), `packages: write` (push), `actions: read` e `security-events: write`
+(CodeQL), `checks: read` (portão `ci-ok` da execução mais recente), `pull-requests: read` (portão que bloqueia PRs abertos),
+`attestations: write` (atestação SLSA de proveniência dos pacotes) e `id-token: write` (exigido pela assinatura do workflow de
+testes reutilizável).
 
 ---
 
@@ -174,6 +176,7 @@ Configurados **na organização** `tudoemcodigo` (*Settings → Secrets and vari
 
 | Nome | Tipo | Uso |
 |---|---|---|
+| `TEC_ENABLE_AZURE_INTEGRATION` | Variable | Qualquer valor não vazio liga o login OIDC e a integração com o Key Vault só no `ci.yml`; vazia ou ausente, os testes de Azure se pulam. O `performance.yml` não lê esta Variable: lá quem decide é o input `cofre_real` |
 | `AZURE_CLIENT_ID` | Variable | Application ID da aplicação federada de CI (OIDC) |
 | `TEC_TESTES_TENANT_ID` | Variable | Tenant do login e dos testes |
 | `TEC_TESTES_VAULT_URI` | Variable | URI do Key Vault exclusivo de testes (`https://<cofre-de-testes>.vault.azure.net/`) |
@@ -225,13 +228,15 @@ az ad app federated-credential create --id <client-id> --parameters '{
 |---|---|
 | `TEC.Vault` | `TEC.Vault/` |
 | `TEC.Vault.AzureKeyVault` | `TEC.Vault.AzureKeyVault/` |
+| `TEC.Vault.AwsSecretsManager` | `TEC.Vault.AwsSecretsManager/` |
+| `TEC.Vault.GoogleSecretManager` | `TEC.Vault.GoogleSecretManager/` |
 | `TEC.Vault.HashiCorpVault` | `TEC.Vault.HashiCorpVault/` |
 | `TEC.Vault.Infisical` | `TEC.Vault.Infisical/` |
 | `TEC.Vault.InMemory` | `TEC.Vault.InMemory/` |
 | `TEC.Vault.Synced` | `TEC.Vault.Synced/` |
 
 > [!IMPORTANT]
-> Os seis pacotes saem sempre com a **mesma versão**. O GitHub Packages não permite sobrescrever: uma versão publicada não
+> Os oito pacotes saem sempre com a **mesma versão**. O GitHub Packages não permite sobrescrever: uma versão publicada não
 > pode ser repetida.
 
 ---
@@ -258,7 +263,7 @@ az ad app federated-credential create --id <client-id> --parameters '{
 <details>
 <summary>Testes de Azure aparecem como pulados</summary>
 
-Esperado em pull request e no `performance.yml` sem `cofre_real`. Na `main`, confira se as Variables `AZURE_CLIENT_ID` e
+Esperado em pull request e no `performance.yml` sem `cofre_real`. Na `main`, pelo `ci.yml`, confira primeiro se `TEC_ENABLE_AZURE_INTEGRATION` tem valor; depois, se as Variables `AZURE_CLIENT_ID` e
 `TEC_TESTES_VAULT_URI` existem e estão liberadas para este repositório, e se o passo **Login no Azure (OIDC)** concluiu.
 
 </details>

@@ -38,24 +38,26 @@ flowchart LR
     I --> A{"TEC_TESTES_VAULT_URI<br/>e credencial?"}
     A -->|"sim"| KV["Key Vault de testes"]
     A -->|"não"| SK
-    U --> R["net8.0 · net10.0 · sem ICU"]
+    U --> R["net10.0 · net10.0 sem ICU"]
 ```
 
 | Projeto | Categorias | Conteúdo | Quantidade |
 |---|---|---|---:|
-| `TEC.Vault.Tests` | *(sem categoria)* | Unitários, contrato, segurança, regressão, fuzz, vazamento sob carga, abuso de recursos | 595 por TFM |
+| `TEC.Vault.Tests` | *(sem categoria)* | Unitários, contrato, segurança, regressão, fuzz, vazamento sob carga, abuso de recursos | ≈ 740 |
 | `TEC.Vault.Tests` | `Integracao` | HashiCorp Vault real (contratos, Transit, PKI, lixeira) e Key Vault de testes | 37 |
 | `TEC.Vault.LoadTests` | `Carga-CI` | Concorrência e fumaça de carga (segundos) | 7 |
 | `TEC.Vault.LoadTests` | `Carga-Pesada` | Carga sustentada (~3 min por cenário), cenário com Key Vault real e 5 medições de performance | 13 |
 
 - Framework: **TUnit** sobre o Microsoft.Testing.Platform (`global.json` → `"test": { "runner": "Microsoft.Testing.Platform" }`).
-  Os dois projetos são `Exe`, `net8.0` e `net10.0`, `IsPackable=false`.
+  Os dois projetos são `Exe`, `net10.0`, `IsPackable=false`.
 - As categorias ficam numa classe `TestCategories` por projeto (`Integration = "Integracao"` em `TEC.Vault.Tests`;
   `LoadCi = "Carga-CI"` e `LoadHeavy = "Carga-Pesada"` em `TEC.Vault.LoadTests`). A seleção é **sempre por categoria**:
   não há variável liga/desliga.
 - Os nomes dos testes estão em inglês e descrevem o comportamento (`Firewall_forbidden_becomes_access_denied_with_error_log`).
 - O provedor Azure é testado sem rede com o **SDK real** sobre um cofre simulado em HTTP (`Fakes/FakeKeyVault.cs`);
-  HashiCorp Vault e Infisical sobre servidores simulados (`Fakes/FakeHashiCorpVault.cs`, `Fakes/FakeInfisical.cs`); o
+  HashiCorp Vault, Infisical, AWS e Google sobre servidores simulados (`Fakes/FakeHashiCorpVault.cs`, `Fakes/FakeInfisical.cs`,
+  `Fakes/FakeAws.cs`, que confere a assinatura SigV4 e simula STS, container e IMDSv2, e `Fakes/FakeGoogle.cs`, que confere o JWT da
+  Service Account e simula o Metadata Server); tempo limite no corpo e resposta gigante com `Fakes/AdversarialHandlers.cs`; o
   Synced sobre pastas e arquivos temporários.
 
 ---
@@ -65,11 +67,8 @@ flowchart LR
 ### Rodar localmente
 
 ```bash
-# Unitários (os dois alvos), como no CI
+# Unitários, como no CI
 dotnet test --project TEC.Vault.Tests --treenode-filter "/*/*/*/*[Category!=Integracao]"
-
-# Um alvo só
-dotnet test --project TEC.Vault.Tests -f net8.0 --treenode-filter "/*/*/*/*[Category!=Integracao]"
 
 # Sem ICU (como em containers mínimos)
 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 dotnet test --project TEC.Vault.Tests -f net10.0 --treenode-filter "/*/*/*/*[Category!=Integracao]"
@@ -108,6 +107,9 @@ $env:DOTNET_SYSTEM_GLOBALIZATION_INVARIANT = "1"; dotnet test --project TEC.Vaul
 | `AzureKeyVaultOperationsTests` | ❌ | Criptografia real no cofre simulado: decrypt, wrap/unwrap, sign/verify, envelope, certificados, lixeira e backup, `OperationTimeout` |
 | `HashiCorpVaultProviderTests` | ❌ | Kubernetes, AppRole e token, namespace, retentativa, lixeira do KV, `custom_metadata`, nomes ambíguos, Transit, PKI por CSR, tag reservada, endereço inválido, um login para os três stores |
 | `InfisicalProviderTests` | ❌ | Login único e renovação, token revogado, credencial relida, Kubernetes Auth, retentativa só idempotente, corpo fora do log, nomes ambíguos, aprovação pendente, segredo em texto recusado |
+| `AwsSecretsManagerProviderTests` | ❌ | SigV4 conferida pelo cofre simulado, erros da AWS em HTTP 400 (`ThrottlingException` repetida, `ExpiredTokenException` renovando a credencial), IRSA com renovação e token relido, container com token de autorização, IMDSv2 e volta às chaves estáticas, endereço e região recusados, corpo que trava, resposta gigante, listagem acima do limite, tags aplicadas, `ClientRequestToken` na retentativa, sonda com cancelamento e métrica, segredo em texto e chave desconhecida recusados |
+| `GoogleSecretManagerProviderTests` | ❌ | Token estático, Service Account (JWT conferido, token em cache, `token_uri` fora da lista recusado sem enviar o JWT), 401 renovando o token, intervalo de falha do login, Metadata Server (sem `Metadata-Flavor` recusado, falha sem ser engolida), endereço e projeto recusados, corpo que trava, resposta gigante, listagem acima do limite, labels aplicadas e recusadas antes da chamada, sonda com cancelamento e métrica, `AccessToken` em texto recusado |
+| `ProviderHardeningTests` | ❌ | Tempo limite na leitura do corpo, `ErrorStatusMapper`, teto do login, teto da leitura compartilhada do cache, chave do cache conforme o provedor, prefixo obrigatório na fonte de `IConfiguration` (inclusive pela seção, com o store descartado), arquivo trocado com mesmo tamanho e data, leitura direta na pasta, links relativos dentro e fora da pasta, `MaxItems` com `VAULT_LISTAGEM_ACIMA_DO_LIMITE` |
 | `SyncedProviderTests` | ❌ | `DirectorySecretStoreTests`, `EnvironmentSecretStoreTests`, `FileSecretStoreTests`, `SyncedConfigurationTests`: layout `..data`, link simbólico para fora, limites, UTF-8 estrito, versão HMAC, prefixo obrigatório, JSON e .env |
 | `InMemoryProviderTests` | ❌ | Trava de Development, segredos, chaves e certificados em memória, escritas paralelas |
 | `DependencyInjectionTests` · `ProviderSelectionTests` | ❌ | Registro no container (inclusive `AddTecVault` chamado duas vezes), escolha por configuração, chave desconhecida, valor inválido sem eco |
@@ -275,7 +277,7 @@ criptografia recriado a cada chamada), não o ruído do runner.
 
 | Evento | Testes | Onde |
 |---|---|---|
-| Pull request / merge queue | Unitários (`net10.0` com cobertura, `net8.0`, sem ICU) e `Integracao` (HashiCorp em container; Azure se pula) | `ci.yml` |
+| Pull request / merge queue | Unitários (`net10.0` com cobertura e `net10.0` sem ICU) e `Integracao` (HashiCorp em container; Azure se pula) | `ci.yml` |
 | `main` (push, agendado/manual) | Os mesmos, com o Key Vault de testes via OIDC; no push, depois do `ci-ok`, a prévia é publicada | `ci.yml` |
 | Publicar versão | Só os unitários (matriz + cobertura) | `release.yml` |
 | Manual (**Performance**) | `Carga-CI` (`suite` = `rapida`), `Carga-Pesada` (`pesadas`, padrão) ou ambos (`todas`) | `performance.yml` |

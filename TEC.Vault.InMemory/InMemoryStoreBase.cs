@@ -42,6 +42,10 @@ public abstract partial class InMemoryStoreBase : VaultProviderBase
 
     private protected TimeProvider Time { get; }
 
+    /// <inheritdoc />
+    /// <remarks>Como o Key Vault, não diferencia maiúsculas nos nomes.</remarks>
+    public override StringComparer NameComparer => StringComparer.OrdinalIgnoreCase;
+
     // \z e não $: $ aceitaria uma quebra de linha no final do nome
     [GeneratedRegex(@"^[0-9a-zA-Z][0-9a-zA-Z._/-]{0,126}\z", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 100)]
     private static partial Regex NamePattern();

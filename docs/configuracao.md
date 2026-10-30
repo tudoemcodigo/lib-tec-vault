@@ -197,7 +197,7 @@ Opções da fonte; tabela completa em [⚙️ Opções](#️-opções). A consta
 
 | Opção (`VaultConfigurationOptions`) | Chave em `Vault:Configuration` | Padrão | Descrição |
 |---|---|---|---|
-| `Prefix` | `Prefix` | `null` | Carrega só segredos com o prefixo (sem diferenciar maiúsculas), removendo-o da chave. Recomendado: um por aplicação |
+| `Prefix` | `Prefix` | — (**obrigatório**) | Carrega só segredos com o prefixo (sem diferenciar maiúsculas), removendo-o da chave. Um por aplicação. Ausente, vazio ou só com espaços: `InvalidOperationException` no `AddTecVault` |
 | `SectionSeparator` | `SectionSeparator` | `"--"` | Separador de seções no nome (vazio → `ArgumentException`) |
 | `ReloadInterval` | `ReloadInterval` | `null` | Recarga periódica, de 1 minuto a 24 horas; `null` = só na subida. Formato `[d.]hh:mm:ss` (`"00:30:00"`); um número sozinho é lido em dias (`"30"` = 30 dias) e é recusado pelo teto |
 | `Optional` | `Optional` | `false` | `true` = sobe com configuração vazia se a **primeira** carga falhar (erro do cofre, tempo limite, `MaxSecrets` ou exceção do leitor) |
@@ -249,7 +249,7 @@ Erros de registro:
 ## 🛡️ Segurança
 
 > [!IMPORTANT]
-> Os valores ficam em memória no `IConfiguration` durante toda a vida da aplicação. Para segredos de alto valor, leia sob demanda com `ISecretReader`. Use sempre um `Prefix`: sem ele a aplicação tenta carregar o cofre inteiro (e falha acima de `MaxSecrets`).
+> Os valores ficam em memória no `IConfiguration` durante toda a vida da aplicação. Para segredos de alto valor, leia sob demanda com `ISecretReader`. O `Prefix` é obrigatório: sem ele, qualquer segredo do cofre viraria uma chave de configuração (um `Logging--LogLevel--Default` de outra aplicação mudaria o seu log), e a subida falha antes disso.
 
 > [!WARNING]
 > Com o provedor escolhido pela configuração, registre o container (`services.AddTecVault(vault, ...)`) **antes** desta fonte. Depois que ela é adicionada, um segredo `MinhaApi--Vault--...` vira uma chave `Vault:...` e passaria a valer para uma escolha lida depois (ex.: trocar o `Address` do provedor usado pelo container).

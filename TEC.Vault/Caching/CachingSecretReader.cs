@@ -2,6 +2,7 @@ using Microsoft.Extensions.Caching.Memory;
 using TEC.Vault.Abstractions;
 using TEC.Vault.Common;
 using TEC.Vault.Diagnostics;
+using TEC.Vault.Providers;
 using TEC.Vault.Secrets;
 using TEC.Core.Common.Guards;
 using TEC.Core.Common.Results;
@@ -22,17 +23,26 @@ namespace TEC.Vault.Caching;
 /// enquanto ela estava em andamento (senão um valor antigo, lido antes da escrita, voltaria ao cache depois da limpeza).</para>
 /// <para>Stampede: leituras simultâneas da mesma chave compartilham uma única chamada ao cofre. A chamada compartilhada não
 /// usa o <see cref="CancellationToken"/> de nenhum chamador (o cancelamento de um não cancela os demais): cada chamador
-/// deixa de esperar quando o seu token é cancelado, e a chamada termina sozinha, limitada pelos timeouts do provedor.
-/// Falhas não são guardadas: a próxima leitura depois de uma falha consulta o cofre de novo.</para>
+/// deixa de esperar quando o seu token é cancelado. A chamada compartilhada tem teto próprio (<see cref="DefaultFetchTimeout"/>):
+/// passou dele, todos os que a aguardam recebem <see cref="VaultErrors.Unavailable"/> e a próxima leitura consulta o cofre de novo
+/// (um leitor que nunca responde não prende a chave para sempre). Falhas não são guardadas.</para>
+/// <para>Chave: nome e versão. O nome segue a comparação do provedor (<see cref="VaultProviderBase.NameComparer"/>): num cofre
+/// que não diferencia maiúsculas, <c>Db</c> e <c>DB</c> ocupam uma única entrada; nos demais (e em leitores que não derivam de
+/// <see cref="VaultProviderBase"/>), são entradas diferentes.</para>
 /// </remarks>
 internal sealed class CachingSecretReader : ISecretReader, IDisposable
 {
     internal const int MaxEntries = 1024;
     internal static readonly TimeSpan MaxDuration = TimeSpan.FromHours(1);
 
+    /// <summary>Teto padrão da leitura compartilhada (inclui login, retentativas e leitura do corpo no provedor): 2 minutos.</summary>
+    internal static readonly TimeSpan DefaultFetchTimeout = TimeSpan.FromMinutes(2);
+
     private readonly ISecretReader _inner;
     private readonly TimeSpan _duration;
+    private readonly TimeSpan _fetchTimeout;
     private readonly TimeProvider _time;
+    private readonly StringComparer _nameComparer;
     private readonly MemoryCache _cache;
     private volatile bool _disposed;
 
@@ -43,16 +53,35 @@ internal sealed class CachingSecretReader : ISecretReader, IDisposable
 
     /// <summary>
     /// Chave do cache e das leituras em andamento: nome e versão como campos separados (uma chave textual concatenada faria
-    /// <c>("a\n", "b")</c> e <c>("a", "\nb")</c> colidirem, e uma leitura receberia o segredo da outra).
+    /// <c>("a\n", "b")</c> e <c>("a", "\nb")</c> colidirem, e uma leitura receberia o segredo da outra). O nome é comparado com a
+    /// regra do provedor; a versão, sempre exata.
     /// </summary>
-    private readonly record struct CacheKey(string Name, string? Version);
+    private readonly struct CacheKey(string? name, string? version, StringComparer nameComparer) : IEquatable<CacheKey>
+    {
+        private readonly StringComparer _comparer = nameComparer;
 
-    public CachingSecretReader(ISecretReader inner, TimeSpan duration, TimeProvider? time = null)
+        public string? Name { get; } = name;
+
+        public string? Version { get; } = version;
+
+        public bool Equals(CacheKey other) =>
+            _comparer.Equals(Name, other.Name) && string.Equals(Version, other.Version, StringComparison.Ordinal);
+
+        public override bool Equals(object? obj) => obj is CacheKey other && Equals(other);
+
+        public override int GetHashCode() => HashCode.Combine(
+            Name is null ? 0 : _comparer.GetHashCode(Name),
+            Version is null ? 0 : StringComparer.Ordinal.GetHashCode(Version));
+    }
+
+    public CachingSecretReader(ISecretReader inner, TimeSpan duration, TimeProvider? time = null, TimeSpan? fetchTimeout = null)
     {
         _inner = Guard.NotNull(inner);
         ValidateDuration(duration);
         _duration = duration;
+        _fetchTimeout = fetchTimeout ?? DefaultFetchTimeout;
         _time = time ?? TimeProvider.System;
+        _nameComparer = (inner as VaultProviderBase)?.NameComparer ?? StringComparer.Ordinal;
 
         // A varredura de expirados do MemoryCache só roda quando há acesso ao cache e, no máximo, a cada ExpirationScanFrequency
         // (padrão: 1 minuto). Com duração menor que isso, a varredura acompanha a duração (mínimo 1 segundo).
@@ -75,7 +104,7 @@ internal sealed class CachingSecretReader : ISecretReader, IDisposable
     public async Task<Result<VaultSecret>> GetSecretAsync(string name, string? version = null, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var key = new CacheKey(name, version);
+        var key = new CacheKey(name, version, _nameComparer);
         if (TryGetCached(key, out var cached))
         {
             VaultDiagnostics.RecordCache(ProviderName, "hit");
@@ -121,9 +150,16 @@ internal sealed class CachingSecretReader : ISecretReader, IDisposable
     {
         Result<VaultSecret>? result = null;
         Exception? failure = null;
+        using var timeout = new CancellationTokenSource(_fetchTimeout, _time);
         try
         {
-            result = await _inner.GetSecretAsync(name, version, CancellationToken.None).ConfigureAwait(false);
+            // O teto chega ao provedor e, se ele não o respeitar, a espera é abandonada mesmo assim
+            result = await _inner.GetSecretAsync(name, version, timeout.Token).WaitAsync(timeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+        {
+            // Passou do teto: falha comum (não guardada) para quem aguarda, nunca um cancelamento que ninguém pediu
+            result = VaultErrors.Unavailable();
         }
         catch (Exception ex)
         {

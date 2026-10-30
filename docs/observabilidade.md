@@ -161,6 +161,9 @@ Mensagens geradas por *source generator* (`LoggerMessage`: sem alocação com o 
 | 2105 | Error | `... recarga lançou {ExceptionType} inesperada; valores anteriores mantidos.` | Exceção na recarga |
 | 2106 | Error | `... a carga lançou {ExceptionType} inesperada.` | Exceção do leitor na carga inicial ou no `Reload()` (com pilha) |
 | 2107 | Debug | `... carga descartada, uma carga iniciada depois já foi aplicada.` | Cargas simultâneas: a mais antiga não sobrescreve a mais nova |
+| 3001 | Warning | `Link simbólico para fora da pasta de segredos ignorado: {Name}.` | Synced `Directory`: link cujo destino final sai da pasta |
+| 3002 | Warning | `Arquivo de segredo ignorado: o destino mudou entre a conferência e a abertura: {Name}.` | Synced `Directory`: o arquivo aberto não é o destino conferido (link trocado no meio) |
+| 3101 | Information | `AWS Secrets Manager: o serviço de metadados do EC2 não respondeu ({ExceptionType}); o processo passa a usar as chaves estáticas configuradas.` | AWS: IMDS sem resposta na primeira vez, com chaves estáticas como alternativa |
 
 - `{Detail}` é um texto técnico seguro (ex.: `403 Forbidden ForbiddenByConnection`, `tempo limite`, `rede: ConnectionError`, `503 Retry-After acima do limite`, `listagem acima de 10000 itens`); nunca corpo de resposta, valor ou token.
 - Operações sem item (listagens, sonda) registram `'*'` como nome.

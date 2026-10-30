@@ -219,7 +219,8 @@ if (token.IsSuccess)
 
 | Uso | Permissão mínima da identidade de máquina |
 |---|---|
-| Ler segredos (`ISecretReader`), `IConfiguration`, health check | Leitura de segredos (inclusive dos **valores**) no ambiente e na pasta configurados |
+| Ler segredos (`ISecretReader`), `IConfiguration` | Leitura de segredos (inclusive dos **valores**) no ambiente e na pasta configurados |
+| Health check | Listagem da pasta configurada: a sonda pede a lista com `viewSecretValue=false` e não lê valores |
 | Gravar e excluir (`ISecretStore`) | Criação, edição e exclusão de segredos no mesmo escopo |
 
 - Uma identidade por aplicação e ambiente, com papel restrito ao projeto, ao ambiente e à pasta (`/minha-api`).

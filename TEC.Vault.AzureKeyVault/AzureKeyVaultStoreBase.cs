@@ -40,6 +40,10 @@ public abstract partial class AzureKeyVaultStoreBase : VaultProviderBase
 
     private protected AzureKeyVaultClients Clients { get; }
 
+    /// <inheritdoc />
+    /// <remarks>O Key Vault não diferencia maiúsculas nos nomes: <c>Db</c> e <c>DB</c> são o mesmo item.</remarks>
+    public override StringComparer NameComparer => StringComparer.OrdinalIgnoreCase;
+
     // \z e não $: $ aceitaria uma quebra de linha no final do nome (que iria para a URL da requisição)
     [GeneratedRegex(@"^[0-9a-zA-Z-]{1,127}\z", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 100)]
     internal static partial Regex NamePattern();

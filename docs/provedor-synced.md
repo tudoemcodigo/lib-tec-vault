@@ -106,13 +106,16 @@ O nome do arquivo é o nome do segredo e o conteúdo é o valor. Formato do volu
 | Nome começando por `.` (inclusive `..data` e `..<data>`) | Ignorada |
 | Subpasta | Ignorada (só arquivos diretamente na pasta) |
 | Nome fora da regra do provedor (ex.: com espaço) | Ignorada |
-| Link simbólico cujo **destino final** fica dentro da pasta | Lido (resolvido a cada leitura: acompanha a troca do `..data`) |
-| Link simbólico para **fora** da pasta (ex.: `/etc/passwd`) | Ignorado, com log `Warning` (evento 3001, só o nome) |
+| Link simbólico cujo **destino final** fica dentro da pasta (destino absoluto ou relativo) | Lido (resolvido a cada leitura: acompanha a troca do `..data`) |
+| Link simbólico para **fora** da pasta (ex.: `/etc/passwd`, `../../outro`) | Ignorado, com log `Warning` (evento 3001, só o nome) |
+| Link trocado entre a conferência e a abertura do arquivo | Ignorado, com log `Warning` (evento 3002, só o nome) |
 | Link quebrado ou para pasta | Ignorado |
-| Dois nomes iguais sem diferenciar maiúsculas (possível no Linux) | A leitura **falha** (`VAULT_FALHA`), em vez de escolher um |
-| Mais arquivos válidos que `MaxItems` | A leitura **falha** (`VAULT_FALHA`) |
+| Dois nomes iguais sem diferenciar maiúsculas (possível no Linux) | O nome exato pedido é lido; a listagem e um pedido com outra grafia, que precisariam escolher um deles, **falham** (`VAULT_FALHA`) |
+| Mais arquivos válidos que `MaxItems` | A listagem **falha** (`VAULT_LISTAGEM_ACIMA_DO_LIMITE`) |
 
-O nome pedido **nunca vira caminho**: a pasta é listada e o arquivo é escolhido pelo nome. `../etc/passwd` nem passa pela regra de nome. Se `Path` for ele próprio um link simbólico, o confinamento é conferido contra a pasta real.
+A leitura de um segredo abre o arquivo do **nome exato** direto, sem listar a pasta: o nome já passou pela regra (sem barra, sem `.` e `..`, começando por letra ou dígito), então `../etc/passwd` nem chega a virar caminho. Só quando o nome exato não existe a pasta é listada, para achar um arquivo com o mesmo nome sem diferenciar maiúsculas. Por isso, aqui, o cache de segredos trata grafias diferentes como itens diferentes.
+
+O destino final do link (todos os links resolvidos, como o `realpath`) precisa ficar dentro da pasta real (se `Path` for ele próprio um link, vale o destino). Para fechar a janela entre conferir o link e ler o arquivo, o arquivo é aberto pelo destino já conferido e o handle aberto é verificado de novo: no Linux, pelo caminho real do handle em `/proc/self/fd`; nos demais sistemas, resolvendo o link outra vez depois da abertura (a janela fica menor, mas não some). O conteúdo é lido desse mesmo handle.
 
 > [!IMPORTANT]
 > Monte o volume na pasta inteira (`mountPath: /mnt/secrets`), não arquivo a arquivo com `subPath`: montagens com `subPath` não recebem as atualizações do Kubernetes.
@@ -131,7 +134,7 @@ As variáveis são lidas do processo a cada chamada; como o ambiente de um proce
 
 ### `SecretsFile`: um arquivo JSON ou .env
 
-O arquivo é **relido só quando muda** (tamanho ou data de modificação). Diferente do `Directory`, um nome fora da regra ou repetido (sem diferenciar maiúsculas) faz a leitura **falhar**: é erro de geração do arquivo, e ignorá-lo esconderia o problema. A mensagem traz só a posição (`item N`, linha), nunca o valor. Cada valor tem no máximo 1 MB.
+Cada consulta lê o arquivo (com o teto de `MaxFileBytes`) e compara o hash SHA-256 do conteúdo com o da leitura anterior: o conteúdo só é interpretado de novo quando muda, e uma troca que mantém tamanho e data de modificação (cópia com `cp -p`, troca no mesmo segundo) não deixa valores antigos em uso. Para evitar a leitura a cada consulta, ligue o cache do núcleo. Diferente do `Directory`, um nome fora da regra ou repetido (sem diferenciar maiúsculas) faz a leitura **falhar**: é erro de geração do arquivo, e ignorá-lo esconderia o problema. A mensagem traz só a posição (`item N`, linha), nunca o valor. Cada valor tem no máximo 1 MB.
 
 **JSON**
 
@@ -491,7 +494,7 @@ Na configuração, cada provedor tem a sua seção (`Vault:Directory`, `Vault:En
 |---|---|---|
 | `Path` | — | **Obrigatório**; pasta (ex.: `/mnt/secrets`), convertida para caminho absoluto |
 | `MaxFileBytes` | `65536` (64 KB) | Tamanho máximo de cada arquivo (1 byte a 1 MB); maior → a leitura **falha** (não trunca) |
-| `MaxItems` | `1000` | Arquivos válidos na pasta (1 a 10.000); acima disso a listagem falha |
+| `MaxItems` | `1000` | Arquivos válidos na pasta (1 a 10.000); acima disso a listagem falha com `VAULT_LISTAGEM_ACIMA_DO_LIMITE` |
 | `TrimTrailingNewline` | `true` | Remove `\r` e `\n` do final do valor (`echo` e vários agentes gravam com `\n`) |
 
 ### `EnvironmentSecretsOptions` (`Vault:EnvironmentVariables`)
@@ -499,7 +502,7 @@ Na configuração, cada provedor tem a sua seção (`Vault:Directory`, `Vault:En
 | Opção | Padrão | Descrição e validação |
 |---|---|---|
 | `Prefix` | — | **Obrigatório**; ao menos 2 caracteres, só letras, números e `_` (ex.: `TECVAULT_`); removido do nome |
-| `MaxItems` | `1000` | Variáveis com o prefixo (1 a 10.000); acima disso a leitura falha |
+| `MaxItems` | `1000` | Variáveis com o prefixo (1 a 10.000); acima disso a leitura falha com `VAULT_LISTAGEM_ACIMA_DO_LIMITE` |
 | `MaxValueBytes` | `65536` (64 KB) | Tamanho máximo de cada valor em UTF-8 (1 byte a 1 MB) |
 
 ### `SecretsFileOptions` (`Vault:SecretsFile`)
@@ -509,7 +512,7 @@ Na configuração, cada provedor tem a sua seção (`Vault:Directory`, `Vault:En
 | `Path` | — | **Obrigatório**; arquivo (ex.: `/vault/secrets/app.json`) |
 | `Format` | `Auto` | `Auto` (pela extensão), `Json` ou `DotEnv`. Com `Auto`, a extensão precisa ser `.json` ou `.env` (ou o arquivo se chamar `.env`) |
 | `MaxFileBytes` | `1048576` (1 MB) | Tamanho máximo do arquivo (1 byte a 16 MB) |
-| `MaxItems` | `1000` | Segredos no arquivo (1 a 10.000); acima disso a leitura falha |
+| `MaxItems` | `1000` | Segredos no arquivo (1 a 10.000); acima disso a leitura falha com `VAULT_LISTAGEM_ACIMA_DO_LIMITE` |
 
 ---
 
@@ -531,7 +534,8 @@ Na configuração, cada provedor tem a sua seção (`Vault:Directory`, `Vault:En
 | Pasta ou arquivo ausente | `VAULT_INDISPONIVEL` | Confira o volume/arquivo e o agente |
 | Sem permissão de leitura | `VAULT_ACESSO_NEGADO` | Ajuste permissões do volume para o usuário do processo |
 | Outra falha de E/S | `VAULT_INDISPONIVEL` | Tente mais tarde |
-| Conteúdo fora do formato: arquivo acima do limite, UTF-8 inválido, JSON/.env inválido, nomes repetidos, acima de `MaxItems` | `VAULT_FALHA` | Corrija o que o agente gera; o log traz só a posição (linha, item ou nome do arquivo), nunca o valor |
+| Mais itens que `MaxItems` | `VAULT_LISTAGEM_ACIMA_DO_LIMITE` | Aumente `MaxItems` ou separe as fontes |
+| Conteúdo fora do formato: arquivo acima do limite, UTF-8 inválido, JSON/.env inválido, nomes repetidos | `VAULT_FALHA` | Corrija o que o agente gera; o log traz só a posição (linha, item ou nome do arquivo), nunca o valor |
 
 Tabela completa em [Erros](erros.md).
 
@@ -545,7 +549,7 @@ Tabela completa em [Erros](erros.md).
 > [!CAUTION]
 > Monte o volume de segredos só no container da aplicação e com `readOnly: true`. Quem consegue gravar na pasta consegue trocar os segredos que a aplicação lê.
 
-- Links simbólicos confinados à pasta (o destino final é conferido a cada leitura); link para fora é ignorado e registrado só com o nome.
+- Links simbólicos confinados à pasta (o destino final é conferido a cada leitura e o handle aberto é verificado de novo); link para fora é ignorado e registrado só com o nome.
 - O nome pedido nunca vira caminho de arquivo.
 - Teto de tamanho e de quantidade em todas as fontes (`MaxFileBytes`, `MaxValueBytes`, `MaxItems`), leitura limitada mesmo em pipe ou arquivo especial, UTF-8 estrito e buffers zerados.
 - Versão por HMAC com chave por instância: não permite confirmar palpites do valor.

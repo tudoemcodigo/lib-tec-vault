@@ -33,18 +33,16 @@ updates:
       nuget:
         patterns: ["*"]
         update-types: ["minor", "patch"]
-    # Fora do Dependabot, atualizados à mão (docs/padroes.md, "Dependências pareadas"):
-    #   - ASP.NET Core e EF Core têm uma versão por TFM no Directory.Packages.props (8.x no net8.0, 10.x no net10.0,
-    #     com Condition). O Dependabot não entende a condição: propõe a major errada no bloco do net8.0 e regenera o
-    #     lock de um TFM só (NU1004 no restore).
+    # Atualizados à mão (docs/padroes.md, "Dependências atualizadas à mão"):
+    #   - ASP.NET Core, EF Core e Microsoft.Extensions.* (DependencyInjection e *.Abstractions) acompanham o .NET do
+    #     alvo (net10.0 -> 10.x). Minor e patch vêm pelo Dependabot; a major só sobe à mão, junto com um alvo novo.
     #   - Roslyn (Microsoft.CodeAnalysis.*): a versão do gerador de código fica presa ao SDK mínimo suportado.
-    #   - Microsoft.Extensions.* (DependencyInjection e *.Abstractions) também podem ter uma versão por TFM (8.0.x no
-    #     net8.0, 10.0.x no net10.0): só major é ignorada (uma 10.x no bloco do net8.0 desfaria o pin); minor/patch
-    #     continuam vindo pelo Dependabot.
     # Vulnerabilidade conhecida nesses pacotes continua quebrando o restore (NuGetAudit).
     ignore:
       - dependency-name: "Microsoft.AspNetCore.*"
+        update-types: ["version-update:semver-major"]
       - dependency-name: "Microsoft.EntityFrameworkCore*"
+        update-types: ["version-update:semver-major"]
       - dependency-name: "Microsoft.CodeAnalysis*"
       - dependency-name: "Microsoft.Extensions.DependencyInjection*"
         update-types: ["version-update:semver-major"]

@@ -12,7 +12,7 @@
 
 ## ✨ O que é
 
-Implementa `ISecretStore`, `IKeyStore`, `IKeyCryptography`, `ICertificateStore`, lixeira, backup e `IVaultHealthProbe` sobre o Azure SDK. A chave privada nunca sai do cofre (cifra, *wrap* e assinatura no Key Vault), o endereço é validado (HTTPS, domínio oficial do Key Vault) e as listagens são limitadas (`MaxListItems`, padrão 10.000).
+Implementa `ISecretStore`, `IKeyStore`, `IKeyCryptography`, `ICertificateStore`, lixeira, backup e `IVaultHealthProbe` sobre o Azure SDK. As chaves do `IKeyStore` não saem do cofre (cifra, *wrap* e assinatura no Key Vault). Certificados são diferentes: `DownloadCertificateAsync` traz a chave privada para o processo quando o certificado foi criado como exportável. Para isso o SDK lê o segredo vinculado ao certificado, então a identidade precisa de permissão de leitura de segredos (`secrets/get`, ou o papel *Key Vault Secrets User* no RBAC) além da leitura de certificados. O endereço é validado (HTTPS, domínio oficial do Key Vault) e as listagens são limitadas (`MaxListItems`, padrão 10.000).
 
 | Autenticação (`Authentication`) | Quando usar |
 |---|---|
@@ -66,4 +66,4 @@ Depois, injete `ISecretReader`, `IKeyCryptography` ou `ICertificateReader` onde 
 
 Opções (`MaxRetries`, `NetworkTimeout`, `OperationTimeout`, `MaxListItems`, `Stores`, `TimeProvider`...), RBAC, limites, conversão de erros e Native AOT: [docs/provedor-azure-key-vault.md](https://github.com/tudoemcodigo/lib-tec-vault/blob/main/docs/provedor-azure-key-vault.md).
 
-`net8.0` e `net10.0` · Native AOT · [MIT](https://github.com/tudoemcodigo/lib-tec-vault/blob/main/LICENSE) · Roberto Oliveira, equipe Tudo em Código
+`net10.0` · Native AOT · [Apache 2.0](https://github.com/tudoemcodigo/lib-tec-vault/blob/main/LICENSE) · Roberto Oliveira, equipe Tudo em Código

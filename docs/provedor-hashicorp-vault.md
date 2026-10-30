@@ -360,16 +360,19 @@ path "secret/metadata/minha-api/*" { capabilities = ["read", "list", "update", "
 
 # ---------- Chaves privadas dos certificados ----------
 # Identidade que SÓ lê/lista certificados (ou só segredos): negue a pasta das chaves (o caminho mais específico vence o
-# "secret/data/minha-api/*" acima)
+# "secret/data/minha-api/*" acima). Com o deny, a exclusão, a recuperação e a remoção definitiva de certificados falham.
 path "secret/data/minha-api/_certificates-keys/*"     { capabilities = ["deny"] }
 path "secret/metadata/minha-api/_certificates-keys/*" { capabilities = ["deny"] }
 
 # Identidade que cria, importa ou baixa certificados (DownloadCertificateAsync): leitura e gravação das chaves
 # path "secret/data/minha-api/_certificates-keys/*"     { capabilities = ["read", "create", "update"] }
-# path "secret/metadata/minha-api/_certificates-keys/*" { capabilities = ["read", "list", "update", "delete"] }
-# path "secret/delete/minha-api/_certificates-keys/*"   { capabilities = ["update"] }
-# path "secret/undelete/minha-api/_certificates-keys/*" { capabilities = ["update"] }
+# path "secret/metadata/minha-api/_certificates-keys/*" { capabilities = ["read", "list", "update"] }
 # path "secret/destroy/minha-api/_certificates-keys/*"  { capabilities = ["update"] }   # limpeza após gravação parcial
+# Identidade que também exclui, recupera ou remove de vez certificados: o provedor apaga, restaura e destrói a chave
+# junto com a parte pública, então precisa destas capacidades na pasta das chaves
+# path "secret/metadata/minha-api/_certificates-keys/*" { capabilities = ["read", "list", "update", "delete"] }   # delete = PurgeDeletedCertificateAsync
+# path "secret/delete/minha-api/_certificates-keys/*"   { capabilities = ["update"] }   # DeleteCertificateAsync
+# path "secret/undelete/minha-api/_certificates-keys/*" { capabilities = ["update"] }   # RecoverDeletedCertificateAsync
 # Migração do formato legado (MigrateCertificateKeysAsync), só administração:
 # path "secret/destroy/minha-api/_certificates/*"       { capabilities = ["update"] }
 

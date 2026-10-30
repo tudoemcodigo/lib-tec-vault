@@ -32,4 +32,6 @@ Implementar resiliência em duas camadas complementares, operando de fora para d
 - Telemetria e métricas dedicadas (`vault.circuit.state_changes`) permitindo dashboards e alarmes de SRE em tempo real.
 
 ### Neutras / Negativas
+- A camada 1 fica no `VaultHttpClient` (HashiCorp Vault, Infisical, AWS e Google, este desde a revisão de 2026-10-29 do ADR 0012) e no SDK do Azure. Tempo limite, inclusive na leitura do corpo, sai como `VAULT_INDISPONIVEL` e conta no circuito.
+- Além das operações idempotentes, o `VaultHttpClient` repete qualquer chamada recusada com 429 (a requisição foi rejeitada antes de ser processada).
 - Durante o período de circuito aberto, consultas a segredos não em cache falham de imediato, exigindo que a aplicação trate `VAULT_CIRCUITO_ABERTO` (por exemplo, degradando graciosamente ou utilizando valores já em cache).

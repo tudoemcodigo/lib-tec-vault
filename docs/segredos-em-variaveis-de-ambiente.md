@@ -33,22 +33,22 @@ O `TEC.Vault.Synced` disponibiliza o `EnvironmentSecretStore`, que implementa:
 
 ### Por que o prefixo obrigatório?
 
-A especificação de segurança do `TEC.Vault` **exige** um prefixo (por padrão `TECVAULT_` ou configurável):
+A especificação de segurança do `TEC.Vault` **exige** um prefixo. Não há valor padrão: sem `Prefix` (ou com menos de 2 caracteres, ou com algo além de letras, números e `_`), a subida falha com `InvalidOperationException`. Os exemplos abaixo usam `TECVAULT_`, mas escolha o seu:
 1. **Evita vazamento de variáveis do sistema:** Impede que chamadas como `ListSecretsAsync()` listem inadvertidamente caminhos do SO (`PATH`, `TEMP`), credenciais do runtime ou variáveis internas da aplicação.
 2. **Isola o escopo de segurança:** Apenas as variáveis explicitamente designadas como segredos de cofre são tratadas pelo componente.
 
 ### Mapeamento e Normalização de Nomes
 
-Nomes de segredos no cofre frequentemente utilizam hífens (`db-password`), barras (`db/prod/password`) ou dois-pontos (`Db:Password`). Como a maioria das shells e sistemas operacionais não permite hífens em identificadores de ambiente, o `EnvironmentSecretStore` realiza o mapeamento bidirecional seguro:
+O nome do segredo é o nome da variável sem o prefixo. A única troca feita é `__` por `--`, o separador de seção do `IConfiguration`. Um `_` simples continua `_` e não vira hífen. A busca não diferencia maiúsculas de minúsculas.
 
-| Nome do Segredo no Código (`ISecretReader`) | Variável de Ambiente (`Prefix = "TECVAULT_"`) |
+| Variável de Ambiente (`Prefix = "TECVAULT_"`) | Nome do Segredo (`ISecretReader`) |
 |---|---|
-| `db-senha` | `TECVAULT_db_senha` ou `TECVAULT_db-senha` |
-| `api/keys/payment` | `TECVAULT_api__keys__payment` |
-| `database:connection-string` | `TECVAULT_database__connection_string` |
+| `TECVAULT_db-senha` | `db-senha` |
+| `TECVAULT_db_senha` | `db_senha` (não é `db-senha`) |
+| `TECVAULT_ConnectionStrings__Db` | `ConnectionStrings--Db` |
 
 > [!NOTE]
-> Caracteres duplos sublinhados (`__`) são traduzidos como separadores de hierarquia, permitindo compatibilidade com o padrão canônico do Microsoft.Extensions.Configuration.
+> Se a sua shell não aceita hífen em nome de variável, dê ao segredo um nome sem hífen (ex.: `db_senha`) e leia-o com esse mesmo nome.
 
 ---
 
@@ -75,7 +75,7 @@ services.AddTecVault(vault => vault
 var provider = services.BuildServiceProvider();
 var secretReader = provider.GetRequiredService<ISecretReader>();
 
-// Lê a variável 'TECVAULT_db_password'
+// Lê a variável 'TECVAULT_db-password'
 var result = await secretReader.GetSecretAsync("db-password");
 if (result.IsSuccess)
 {
@@ -104,9 +104,9 @@ var services = new ServiceCollection();
 services.AddTecVault(vault => vault
     .UseChainedSecrets(
         // Camada 1: Variáveis de Ambiente (prioridade ou override local)
-        new EnvironmentSecretStore(new EnvironmentVariablesOptions { Prefix = "TECVAULT_" }),
+        _ => new EnvironmentSecretStore(new EnvironmentSecretsOptions { Prefix = "TECVAULT_" }),
         // Camada 2: AWS Secrets Manager (fallback em produção)
-        new AwsSecretsManagerSecretStore(new AwsSecretsManagerOptions
+        _ => new AwsSecretsManagerSecretStore(new AwsSecretsManagerOptions
         {
             Region = "us-east-1",
             AccessKeyId = "AKIA...",
@@ -118,7 +118,7 @@ services.AddTecVault(vault => vault
 var provider = services.BuildServiceProvider();
 var reader = provider.GetRequiredService<ISecretReader>();
 
-// Busca primeiro em TECVAULT_jwt_secret; se não existir (VAULT_ITEM_NAO_ENCONTRADO), busca na AWS
+// Busca primeiro em TECVAULT_jwt-secret; se não existir (VAULT_ITEM_NAO_ENCONTRADO), busca na AWS
 var jwtSecret = await reader.GetSecretAsync("jwt-secret");
 ```
 
@@ -132,7 +132,9 @@ Você também pode configurar o provedor por arquivo de configuração sem acopl
 {
   "Vault": {
     "Secrets": {
-      "Provider": "EnvironmentVariables",
+      "Provider": "EnvironmentVariables"
+    },
+    "EnvironmentVariables": {
       "Prefix": "TECVAULT_"
     }
   }
@@ -161,9 +163,9 @@ O `EnvironmentSecretStore` foi projetado especificamente para:
 Para testes de unidade sem poluir as variáveis de ambiente reais do sistema operacional, você pode definir variáveis no processo corrente:
 
 ```csharp
-Environment.SetEnvironmentVariable("TECVAULT_api_token", "segredo-de-teste");
+Environment.SetEnvironmentVariable("TECVAULT_api-token", "segredo-de-teste");
 
-var store = new EnvironmentSecretStore(new EnvironmentVariablesOptions { Prefix = "TECVAULT_" });
+var store = new EnvironmentSecretStore(new EnvironmentSecretsOptions { Prefix = "TECVAULT_" });
 var result = await store.GetSecretAsync("api-token");
 
 Assert.True(result.IsSuccess);

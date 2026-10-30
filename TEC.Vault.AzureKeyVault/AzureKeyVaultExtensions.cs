@@ -49,11 +49,13 @@ public static class AzureKeyVaultExtensions
 
     /// <summary>
     /// Adiciona os segredos do Azure Key Vault à configuração. Veja <see cref="VaultConfigurationBuilderExtensions.AddTecVault"/>.
+    /// <see cref="VaultConfigurationOptions.Prefix"/> é obrigatório (defina em <paramref name="configureConfiguration"/>).
     /// </summary>
     /// <remarks>
     /// <paramref name="loggerFactory"/> é usado pelo store (auditoria) e pelo provedor de configuração (falhas de carga e
     /// recarga, tempo limite e estouro de <see cref="VaultConfigurationOptions.MaxSecrets"/>). Recomendado informar.
     /// </remarks>
+    /// <exception cref="InvalidOperationException">Opções inválidas, inclusive prefixo ausente.</exception>
     /// <example>
     /// <code>
     /// builder.Configuration.AddTecVaultAzureKeyVault(

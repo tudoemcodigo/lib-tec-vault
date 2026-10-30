@@ -60,6 +60,13 @@ public abstract partial class SyncedSecretStoreBase : VaultProviderBase, ISecret
 
     private protected VaultProviderRules Rules { get; }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Variáveis de ambiente e arquivo de segredos recusam nomes repetidos sem diferenciar maiúsculas: <c>Db</c> e <c>DB</c> são o
+    /// mesmo item. A pasta (<see cref="DirectorySecretStore"/>) abre o nome exato primeiro e volta a diferenciar maiúsculas.
+    /// </remarks>
+    public override StringComparer NameComparer => StringComparer.OrdinalIgnoreCase;
+
     /// <summary>Itens atuais da fonte (nome, valor e data de atualização), sem duplicados por nome (sem diferenciar maiúsculas).</summary>
     private protected abstract IReadOnlyList<SyncedEntry> ReadAll(CancellationToken cancellationToken);
 

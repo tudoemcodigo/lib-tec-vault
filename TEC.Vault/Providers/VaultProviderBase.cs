@@ -61,6 +61,19 @@ public abstract class VaultProviderBase
     public string ProviderName { get; }
 
     /// <summary>
+    /// Como o cofre compara nomes de itens. Padrão: <see cref="StringComparer.Ordinal"/> (diferencia maiúsculas). Um provedor em que
+    /// nomes que só diferem em maiúsculas são sempre o mesmo item (ex.: Azure Key Vault) devolve
+    /// <see cref="StringComparer.OrdinalIgnoreCase"/>, e o cache de segredos usa a mesma regra na chave: uma entrada por segredo,
+    /// qualquer que seja a grafia pedida.
+    /// </summary>
+    /// <remarks>
+    /// Na dúvida, mantenha o padrão. Tratar como diferentes dois nomes que o cofre considera iguais só duplica entradas no cache; o
+    /// contrário serviria o valor de um segredo no lugar do outro (ex.: cofre que procura primeiro o nome exato e só depois ignora
+    /// maiúsculas, como HashiCorp Vault e Infisical).
+    /// </remarks>
+    public virtual StringComparer NameComparer => StringComparer.Ordinal;
+
+    /// <summary>
     /// Converte uma exceção do SDK do provedor. Retorne <c>null</c> para exceções desconhecidas: elas são registradas com
     /// a pilha e convertidas em <see cref="VaultErrors.ProviderFailure"/>.
     /// </summary>

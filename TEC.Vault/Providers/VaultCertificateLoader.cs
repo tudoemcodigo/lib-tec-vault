@@ -3,15 +3,11 @@ using System.Security.Cryptography.X509Certificates;
 
 namespace TEC.Vault.Providers;
 
-/// <summary>
-/// Carga segura de certificados, com o mesmo comportamento no .NET 8 e no .NET 9+ (uso pelos provedores e pelos modelos).
-/// </summary>
+/// <summary>Carga segura de certificados (uso pelos provedores e pelos modelos).</summary>
 /// <remarks>
-/// <para>No .NET 9+ usa <c>X509CertificateLoader</c> (limites padrão contra PFX malicioso: iterações, tamanho, quantidade de itens).
-/// No .NET 8, onde ele não existe, usa o construtor de <see cref="X509Certificate2"/> com as mesmas regras: o tipo do conteúdo é
-/// conferido antes (<see cref="LoadCertificate"/> nunca aceita PFX/PKCS#7; <see cref="LoadPkcs12"/> só aceita PKCS#12) e os
-/// mesmos <see cref="X509KeyStorageFlags"/> são usados. O construtor do .NET 8 tem menos limites de PKCS#12 que o
-/// <c>X509CertificateLoader</c>; os provedores limitam o tamanho do conteúdo antes da carga.</para>
+/// Usa <c>X509CertificateLoader</c>, com os limites padrão contra PFX malicioso (iterações, tamanho, quantidade de itens):
+/// <see cref="LoadCertificate"/> nunca aceita PFX/PKCS#7 e <see cref="LoadPkcs12"/> só aceita PKCS#12. Os provedores limitam o
+/// tamanho do conteúdo antes da carga.
 /// </remarks>
 public static class VaultCertificateLoader
 {
@@ -28,13 +24,7 @@ public static class VaultCertificateLoader
     public static X509Certificate2 LoadCertificate(byte[] data)
     {
         ArgumentNullException.ThrowIfNull(data);
-#if NET9_0_OR_GREATER
         return X509CertificateLoader.LoadCertificate(data);
-#else
-        if (X509Certificate2.GetCertContentType(data) != X509ContentType.Cert)
-            throw new CryptographicException("O conteúdo não é um certificado X.509.");
-        return new X509Certificate2(data);
-#endif
     }
 
     /// <summary>Carrega um PKCS#12 (PFX) com a chave privada.</summary>
@@ -45,14 +35,7 @@ public static class VaultCertificateLoader
     public static X509Certificate2 LoadPkcs12(byte[] data, string? password, X509KeyStorageFlags? keyStorageFlags = null)
     {
         ArgumentNullException.ThrowIfNull(data);
-        var flags = keyStorageFlags ?? SafeKeyStorageFlags;
-#if NET9_0_OR_GREATER
-        return X509CertificateLoader.LoadPkcs12(data, password, flags);
-#else
-        if (X509Certificate2.GetCertContentType(data) != X509ContentType.Pkcs12)
-            throw new CryptographicException("O conteúdo não é PKCS#12.");
-        return new X509Certificate2(data, password, flags);
-#endif
+        return X509CertificateLoader.LoadPkcs12(data, password, keyStorageFlags ?? SafeKeyStorageFlags);
     }
 
     /// <summary>
@@ -66,23 +49,6 @@ public static class VaultCertificateLoader
     public static X509Certificate2Collection LoadPkcs12Collection(byte[] data, string? password, X509KeyStorageFlags? keyStorageFlags = null)
     {
         ArgumentNullException.ThrowIfNull(data);
-        var flags = keyStorageFlags ?? SafeKeyStorageFlags;
-#if NET9_0_OR_GREATER
-        return X509CertificateLoader.LoadPkcs12Collection(data, password, flags);
-#else
-        if (X509Certificate2.GetCertContentType(data) != X509ContentType.Pkcs12)
-            throw new CryptographicException("O conteúdo não é PKCS#12.");
-        var collection = new X509Certificate2Collection();
-        collection.Import(data, password, flags);
-        return collection;
-#endif
+        return X509CertificateLoader.LoadPkcs12Collection(data, password, keyStorageFlags ?? SafeKeyStorageFlags);
     }
-
-    /// <summary>Indica qual implementação está em uso (testes): <c>true</c> = <c>X509CertificateLoader</c> (.NET 9+).</summary>
-    internal static bool UsesCertificateLoader =>
-#if NET9_0_OR_GREATER
-        true;
-#else
-        false;
-#endif
 }

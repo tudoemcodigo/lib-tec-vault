@@ -15,7 +15,7 @@ Se o componente de cofre obrigar a escolha de um único provedor exclusivo, o de
 ## Decisão
 Implementar o `ChainedSecretReader` no núcleo do `TEC.Vault`, permitindo encadear uma lista ordenada de leitores de segredos:
 - Resolução por prioridade decrescente.
-- O erro `VAULT_ITEM_NAO_ENCONTRADO` atua como gatilho de transição para o próximo leitor da cadeia.
+- Os erros `VAULT_ITEM_NAO_ENCONTRADO` e `VAULT_ENTRADA_INVALIDA` (nome recusado pela regra de uma camada) atuam como gatilho de transição para o próximo leitor da cadeia.
 - Erros terminais (como `VAULT_ACESSO_NEGADO`) interrompem o encadeamento para não mascarar falhas de segurança.
 - As listagens de segredos agregam as entradas de todos os stores de forma deduplicada e consistente.
 

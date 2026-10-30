@@ -135,7 +135,7 @@ builder.Services.AddTecVault(builder.Configuration.GetSection("Vault"),
 
 ### Fonte de `IConfiguration`
 
-A mesma seção escolhe o provedor de segredos da fonte de configuração; as opções da fonte vêm de `Vault:Configuration` (detalhes em [🧾 Segredos no IConfiguration](configuracao.md)):
+A mesma seção escolhe o provedor de segredos da fonte de configuração; as opções da fonte vêm de `Vault:Configuration` (detalhes em [🧾 Segredos no IConfiguration](configuracao.md)). `Vault:Configuration:Prefix` é **obrigatório**: sem ele (ou com ele vazio), a fonte derruba a subida com `InvalidOperationException`, para que um segredo de outra aplicação (ex.: `Logging--LogLevel--Default`) nunca sobrescreva uma chave da configuração:
 
 ```csharp
 using TEC.Vault.Configuration;
@@ -327,12 +327,12 @@ Extensões dos pacotes:
 | `AddAzureKeyVault(Action<AzureKeyVaultOptions>? configure = null)` | `AzureKeyVaultCatalogExtensions` (`ProviderName`) | `TEC.Vault.AzureKeyVault` | `AzureKeyVault` |
 | `AddHashiCorpVault(Action<HashiCorpVaultOptions>? configure = null)` | `HashiCorpVaultExtensions` (`ProviderName`) | `TEC.Vault.HashiCorpVault` | `HashiCorpVault` |
 | `AddInfisical(Action<InfisicalOptions>? configure = null)` | `InfisicalExtensions` | `TEC.Vault.Infisical` | `Infisical` |
-| `AddAwsSecretsManager()` | `AwsSecretsManagerExtensions` | `TEC.Vault.AwsSecretsManager` | `AwsSecretsManager` |
-| `AddGoogleSecretManager()` | `GoogleSecretManagerExtensions` | `TEC.Vault.GoogleSecretManager` | `GoogleSecretManager` |
+| `AddAwsSecretsManager(Action<AwsSecretsManagerOptions>? configure = null)` | `AwsSecretsManagerExtensions` | `TEC.Vault.AwsSecretsManager` | `AwsSecretsManager` |
+| `AddGoogleSecretManager(Action<GoogleSecretManagerOptions>? configure = null)` | `GoogleSecretManagerExtensions` | `TEC.Vault.GoogleSecretManager` | `GoogleSecretManager` |
 | `AddSynced()` | `SyncedVaultExtensions` | `TEC.Vault.Synced` | `Directory`, `EnvironmentVariables`, `SecretsFile` |
 | `AddInMemory(Action<InMemoryVaultOptions>? configure = null)` | `InMemoryVaultCatalogExtensions` (`ProviderName`) | `TEC.Vault.InMemory` | `InMemory` |
 
-Nas que têm `configure` (Azure, HashiCorp, Infisical e em memória), ele roda depois da leitura da seção (o valor em código vence o da configuração). `AddAwsSecretsManager()` e `AddGoogleSecretManager()` não têm `configure`: o que só existe em código (`Http.Handler`, `TimeProvider`, nomes de variáveis de credencial) exige o registro direto com `UseAwsSecretsManager(...)` / `UseGoogleSecretManager(...)`. `AddSynced()` também não tem `configure`.
+Nas que têm `configure` (Azure, HashiCorp, Infisical, AWS, Google e em memória), ele roda depois da leitura da seção (o valor em código vence o da configuração). `AddSynced()` não tem `configure`.
 
 ### `VaultProviderRegistration`
 
@@ -392,7 +392,7 @@ Todos os erros são `InvalidOperationException` com o caminho da chave e o forma
 | `Vault:Secrets:Provider` · `Vault:Keys:Provider` · `Vault:Certificates:Provider` | texto | Provedor da família (precedência); `None` desliga |
 | `Vault:Cache:Duration` | `[d.]hh:mm:ss` | Cache de leituras de segredos (maior que zero, até 1 hora) — [detalhes](cache-e-health-check.md) |
 | `Vault:<NomeDoProvedor>` | seção | Opções do provedor (tabelas abaixo) |
-| `Vault:Configuration` | seção | Opções da fonte de `IConfiguration` (`Prefix`, `SectionSeparator`, `ReloadInterval`, `Optional`, `MaxSecrets`, `LoadTimeout`, `MaxConcurrentReads`); usadas só por `IConfigurationBuilder.AddTecVault` ([detalhes](configuracao.md#️-opções)); o container não as valida |
+| `Vault:Configuration` | seção | Opções da fonte de `IConfiguration` (`Prefix`, **obrigatório**, `SectionSeparator`, `ReloadInterval`, `Optional`, `MaxSecrets`, `LoadTimeout`, `MaxConcurrentReads`); usadas só por `IConfigurationBuilder.AddTecVault` ([detalhes](configuracao.md#️-opções)); o container não as valida |
 
 Formatos aceitos pelos valores:
 
@@ -466,30 +466,34 @@ Só em código: `Http.Handler`, `Http.MaxRetryDelay`, `Http.MaxResponseBytes`, `
 
 | Chave | Faixa / valores | Equivale a |
 |---|---|---|
-| `Region` | texto (padrão: `AWS_REGION`, `AWS_DEFAULT_REGION` ou `us-east-1`) | `AwsSecretsManagerOptions.Region` |
-| `Endpoint` | URI (LocalStack, VPC endpoint) | `Endpoint` |
-| `AccessKeyId` · `SecretAccessKey` · `SessionToken` | texto | Mesmas opções |
-| `MaxListItems` | padrão 1.000 (documentado para 1 a 10.000; a faixa não é validada na subida) | `MaxListItems` |
+| `Region` | letras minúsculas, dígitos e hífen (padrão: `AWS_REGION`, `AWS_DEFAULT_REGION` ou `us-east-1`) | `AwsSecretsManagerOptions.Region` |
+| `Endpoint` · `StsEndpoint` | URI HTTPS, só o servidor (VPC endpoint, LocalStack em localhost no Development) | `Endpoint` · `StsEndpoint` |
+| `RoleArn` · `WebIdentityTokenFile` · `RoleSessionName` | texto · caminho · texto | Web identity (IRSA) |
+| `UseContainerCredentials` · `UseInstanceMetadata` | booleano | Mesmas opções |
+| `AccessKeyId` | texto (identificador, não é segredo) | `AccessKeyId` |
+| `AccessKeyIdVariable` · `SecretAccessKeyVariable` · `SessionTokenVariable` | nome de variável | Mesmas opções |
+| `MaxListItems` | 1 a 1.000.000 (padrão 10.000) | `MaxListItems` |
+| `MaxRetries` · `NetworkTimeout` | 0 a 10 · intervalo | `Http.MaxRetries` · `Http.NetworkTimeout` |
+| `CircuitBreaker:Enabled` · `FailureRatio` · `MinimumThroughput` · `SamplingDuration` · `BreakDuration` | booleano · 0 a 1 · 2 a 10.000 · intervalo | `Http.CircuitBreaker.*` ([🔁 Resiliência](resiliencia.md)) |
+| ~~`SecretAccessKey`~~ · ~~`SessionToken`~~ | **recusadas** | Use `SecretAccessKeyVariable`/`SessionTokenVariable` ou uma fonte sem segredo (IRSA, container, IMDS) |
 
-Só em código (`UseAwsSecretsManager`): `AccessKeyIdVariable`, `SecretAccessKeyVariable`, `SessionTokenVariable`, `Http.*` (inclusive `Http.CircuitBreaker`) e `TimeProvider`. Chaves fora desta tabela (como `CircuitBreaker`) são recusadas como desconhecidas. Detalhes: [☁️ Provedor AWS Secrets Manager](provedor-aws-secrets-manager.md).
-
-> [!WARNING]
-> Ao contrário dos provedores acima, `AccessKeyId`, `SecretAccessKey` e `SessionToken` **não** são recusadas em texto na configuração. Prefira as variáveis padrão da AWS (ou o papel da instância) e nunca grave a chave no `appsettings`.
+Só em código: `Http.Handler`, `Http.MaxRetryDelay`, `Http.MaxResponseBytes`, `HostEnvironment`, `TimeProvider` e as chaves estáticas em texto. Detalhes: [☁️ Provedor AWS Secrets Manager](provedor-aws-secrets-manager.md).
 
 ### `Vault:GoogleSecretManager`
 
 | Chave | Faixa / valores | Equivale a |
 |---|---|---|
 | `ProjectId` | texto (padrão: `GOOGLE_CLOUD_PROJECT` ou `GCP_PROJECT`) | `GoogleSecretManagerOptions.ProjectId` |
-| `Endpoint` | URI (padrão `https://secretmanager.googleapis.com/`) | `Endpoint` |
-| `AccessToken` | texto | `AccessToken` |
-| `CredentialsJsonFile` | caminho (padrão: `GOOGLE_APPLICATION_CREDENTIALS`) | `CredentialsJsonFile` |
-| `MaxListItems` | padrão 1.000 (documentado para 1 a 10.000; a faixa não é validada na subida) | `MaxListItems` |
+| `Endpoint` | URI HTTPS, só o servidor (padrão `https://secretmanager.googleapis.com/`) | `Endpoint` |
+| `AccessTokenVariable` | nome de variável | `AccessTokenVariable` |
+| `CredentialsJsonFile` · `CredentialsJsonVariable` | caminho (padrão: `GOOGLE_APPLICATION_CREDENTIALS`) · nome de variável | Mesmas opções |
+| `UseMetadataServer` | booleano (padrão `true`) | `UseMetadataServer` |
+| `MaxListItems` | 1 a 1.000.000 (padrão 10.000) | `MaxListItems` |
+| `MaxRetries` · `NetworkTimeout` | 0 a 10 · intervalo | `Http.MaxRetries` · `Http.NetworkTimeout` |
+| `CircuitBreaker:Enabled` · `FailureRatio` · `MinimumThroughput` · `SamplingDuration` · `BreakDuration` | booleano · 0 a 1 · 2 a 10.000 · intervalo | `Http.CircuitBreaker.*` ([🔁 Resiliência](resiliencia.md)) |
+| ~~`AccessToken`~~ | **recusada** | Use `AccessTokenVariable`, uma Service Account em arquivo ou o Metadata Server |
 
-Só em código (`UseGoogleSecretManager`): `AccessTokenVariable`, `CredentialsJsonVariable`, `UseMetadataServer`, `Http.*` (inclusive `Http.CircuitBreaker`) e `TimeProvider`. Detalhes: [🔷 Provedor Google Secret Manager](provedor-google-secret-manager.md).
-
-> [!WARNING]
-> `AccessToken` (token OAuth2 estático) é aceito em texto na configuração, ao contrário dos provedores acima. Use só em testes; em produção prefira o Metadata Server ou a Service Account por arquivo.
+Só em código: `AllowedTokenHosts`, `Http.Handler`, `Http.MaxRetryDelay`, `Http.MaxResponseBytes`, `HostEnvironment`, `TimeProvider` e o `AccessToken` em texto. Detalhes: [🔷 Provedor Google Secret Manager](provedor-google-secret-manager.md).
 
 ### `Vault:Directory`, `Vault:EnvironmentVariables` e `Vault:SecretsFile`
 
@@ -539,13 +543,14 @@ Toda configuração inválida falha **na subida** com `InvalidOperationException
 
 | Regra | Como é aplicada |
 |---|---|
-| **Nenhum segredo em texto na configuração** | Chaves que trariam a credencial de login (`ClientSecret`, `AccessToken`, `Auth:Token`, `Auth:SecretId`, `Auth:Jwt`) são **recusadas** sempre que presentes, mesmo vazias (`VaultSettings.RejectInlineSecret`); a credencial vem só de `...File` ou `...Variable`, lida a cada login. Exceção atual: `AwsSecretsManager` (`AccessKeyId`, `SecretAccessKey`, `SessionToken`) e `GoogleSecretManager` (`AccessToken`) aceitam o valor em texto |
+| **Nenhum segredo em texto na configuração** | Chaves que trariam a credencial de login (`ClientSecret`, `AccessToken`, `Auth:Token`, `Auth:SecretId`, `Auth:Jwt`, e no AWS `SecretAccessKey` e `SessionToken`) são **recusadas** sempre que presentes, mesmo vazias (`VaultSettings.RejectInlineSecret`); a credencial vem só de `...File` ou `...Variable`, lida a cada login |
 | **Liberações de desenvolvimento só em código** | `InMemory:AllowOutsideDevelopment` e `AzureKeyVault:AllowDeveloperCredentialsOutsideDevelopment` são recusadas (`VaultSettings.RejectKey`): um `appsettings` trocado ou uma variável de ambiente não liberam o cofre em memória nem a credencial de desenvolvedor em produção |
 | **Leitura estrita** | Toda chave presente precisa ser lida; uma chave desconhecida (ex.: `Adress`) derruba a subida em vez de cair num padrão em silêncio |
 | **Mensagens sem valores** | Os erros trazem o caminho da chave e o formato esperado, **nunca o valor** (uma chave digitada errado pode conter um segredo colado por engano) |
 | **Sem provedor descoberto por reflexão** | Só os provedores adicionados ao catálogo em código podem ser escolhidos; o catálogo recusa nomes repetidos e o nome `None` |
-| **Endereço validado** | As opções passam pela mesma validação do registro em código (HTTPS, sem caminho/usuário/query; HTTP só em `localhost` em Development) |
-| **Listagens com teto** | `MaxListItems` limita quantos itens uma listagem lê (Azure e HashiCorp falham com `VAULT_LISTAGEM_ACIMA_DO_LIMITE`; AWS e Google devolvem só os primeiros itens); um cofre inflado não esgota a memória da aplicação |
+| **Endereço validado** | As opções passam pela mesma validação do registro em código (HTTPS, sem caminho/usuário/query; HTTP só em `localhost` em Development), em todos os provedores HTTP |
+| **Listagens com teto** | `MaxListItems` limita quantos itens uma listagem lê e, acima dele, todos os provedores falham com `VAULT_LISTAGEM_ACIMA_DO_LIMITE` (nunca uma lista cortada); um cofre inflado não esgota a memória da aplicação |
+| **Prefixo obrigatório na fonte de `IConfiguration`** | `Vault:Configuration:Prefix` vazio ou ausente derruba a subida: só os segredos da aplicação viram configuração |
 
 > [!CAUTION]
 > Mesmo com essas regras, quem consegue alterar o `appsettings` de produção (ou as variáveis de ambiente do host) escolhe o cofre da aplicação. Trate esses arquivos como configuração sensível: revisão em pull request, imagem imutável e variáveis de ambiente restritas.

@@ -89,8 +89,7 @@ public sealed class EnvironmentSecretStore : SyncedSecretStoreBase
                 continue;
             if (!names.Add(name))
                 throw new SyncedFormatException($"variáveis repetidas sem diferenciar maiúsculas: {name}");
-            if (entries.Count == _options.MaxItems)
-                throw new SyncedFormatException($"há mais de {_options.MaxItems} variáveis com o prefixo (MaxItems)");
+            EnsureListLimit(entries.Count + 1, _options.MaxItems);
             if (System.Text.Encoding.UTF8.GetByteCount(value) > _options.MaxValueBytes)
                 throw new SyncedFormatException($"variável acima de MaxValueBytes: {name}");
 

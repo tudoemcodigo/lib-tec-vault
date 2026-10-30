@@ -62,7 +62,7 @@ flowchart LR
 
 | Item | Detalhe |
 |---|---|
-| SDK | .NET 10 (`global.json`: `10.0.100`, `rollForward: latestFeature`) e o runtime 8.0 para rodar os testes em `net8.0` |
+| SDK | .NET 10 (`global.json`: `10.0.402`, `rollForward: latestPatch`; o alvo é só `net10.0`) |
 | Docker | Só para a integração com o HashiCorp Vault |
 | Azure CLI | Só para a integração com o Key Vault de testes (`az login`) |
 | Feed `tec-interno` | Leitura obrigatória no modo pacote, o padrão (PAT classic com `read:packages`; o GitHub Packages exige token mesmo para pacote público) |

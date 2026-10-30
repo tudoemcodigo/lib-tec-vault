@@ -1,7 +1,7 @@
 using System.Buffers;
 using System.Net;
 using System.Net.Http.Headers;
-using System.Text;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
@@ -17,18 +17,35 @@ using TEC.Core.Common.Results;
 namespace TEC.Vault.AwsSecretsManager;
 
 /// <summary>
-/// Provedor para AWS Secrets Manager via HTTP puro e protocolo JSON 1.1 da AWS com assinatura SigV4 nativa.
-/// Compatível com Native AOT e zero dependências pesadas externas.
+/// Segredos no AWS Secrets Manager pela API HTTP (protocolo JSON 1.1) com assinatura SigV4 feita no próprio pacote, sem o SDK da
+/// AWS (provedor <c>AwsSecretsManager</c>). Thread-safe; uma instância por aplicação.
 /// </summary>
+/// <remarks>
+/// <para><b>Transporte</b>: o mesmo dos demais provedores HTTP (<see cref="VaultHttpClient"/>): retentativa com backoff,
+/// tempo limite também na leitura do corpo, teto de resposta (<see cref="VaultHttpSettings.MaxResponseBytes"/>), sem
+/// redirecionamento, e circuit breaker. A AWS responde quase todo erro com HTTP 400 e o tipo no corpo: <c>ThrottlingException</c> é
+/// repetida como um 429, e <c>ExpiredTokenException</c> (ou outra recusa da credencial) renova a credencial e repete a chamada uma
+/// vez. Gravações levam um <c>ClientRequestToken</c>, e por isso também podem ser repetidas sem criar versões duplicadas.</para>
+/// <para><b>Credenciais</b>: veja <see cref="AwsSecretsManagerOptions"/> (web identity, container, IMDSv2 e chaves estáticas). A
+/// credencial fica em cache e as temporárias são renovadas antes de expirar.</para>
+/// <para><b>Tags</b> valem para o segredo inteiro (não por versão) e são substituídas por inteiro (<c>TagResource</c> e
+/// <c>UntagResource</c>). Não há tipo de conteúdo, habilitar/desabilitar nem validade: pedir esses campos retorna
+/// <see cref="VaultErrors.InvalidInput"/>.</para>
+/// <para><b>Listagens</b> passam de página em página até o fim e falham com <see cref="VaultErrors.TooManyItems"/> acima de
+/// <see cref="AwsSecretsManagerOptions.MaxListItems"/> (nunca devolvem uma lista cortada).</para>
+/// </remarks>
 public sealed partial class AwsSecretsManagerSecretStore : VaultHttpProviderBase, ISecretStore, IVaultHealthProbe, IDisposable
 {
     /// <summary>Nome do provedor.</summary>
     public const string Provider = "AwsSecretsManager";
 
-    /// <summary>Tamanho máximo permitido de segredo no AWS Secrets Manager (64 KB).</summary>
+    /// <summary>Tamanho máximo de um valor no AWS Secrets Manager: 64 KB.</summary>
     public const int MaxSecretValueBytes = 64 * 1024;
 
-    private static readonly VaultProviderRules Rules = new(NamePattern(), "use letras, números, hífen, sublinhado e barra (/ ou _ ou -).")
+    private const int PageSize = 100;
+    private const string CurrentStage = "AWSCURRENT";
+
+    private static readonly VaultProviderRules Rules = new(NamePattern(), "use de 1 a 512 caracteres: letras, números e /_+=.@-.")
     {
         VersionPattern = VersionPattern(),
         MaxSecretValueBytes = MaxSecretValueBytes,
@@ -38,41 +55,28 @@ public sealed partial class AwsSecretsManagerSecretStore : VaultHttpProviderBase
         MaxBackupBytes = 0
     };
 
-    private readonly AwsSecretsManagerOptions _options;
-    private readonly string _accessKey;
-    private readonly string _secretKey;
-    private readonly string? _sessionToken;
-    private readonly Uri _endpoint;
-    private readonly HttpClient _httpClient;
+    private readonly string _region;
+    private readonly int _maxListItems;
     private readonly TimeProvider _time;
-    private bool _disposed;
+    private readonly AwsCredentialSource _credentials;
+    private readonly VaultTokenSource _tokens;
+    private readonly VaultHttpClient _http;
+    private int _disposed;
 
-    /// <summary>Cria uma nova instância do provedor AWS Secrets Manager.</summary>
+    /// <summary>Cria o store. As opções são validadas aqui (falha na inicialização, não na primeira requisição).</summary>
+    /// <exception cref="InvalidOperationException">Opções inválidas ou nenhuma fonte de credenciais.</exception>
     public AwsSecretsManagerSecretStore(AwsSecretsManagerOptions options, ILogger<AwsSecretsManagerSecretStore>? logger = null)
         : base(Provider, logger ?? (ILogger)NullLogger.Instance, CreateCircuitBreaker(options))
     {
         ArgumentNullException.ThrowIfNull(options);
-        var resolved = options.Resolve();
-
-        _options = options;
-        _accessKey = resolved.AccessKey;
-        _secretKey = resolved.SecretKey;
-        _sessionToken = resolved.SessionToken;
-        _endpoint = resolved.EndpointUri;
+        var resolved = options.Validate();
+        _region = options.Region;
+        _maxListItems = options.MaxListItems;
         _time = options.TimeProvider ?? TimeProvider.System;
 
-        var handler = options.Http.Handler ?? new SocketsHttpHandler
-        {
-            PooledConnectionLifetime = TimeSpan.FromMinutes(15),
-            EnableMultipleHttp2Connections = true,
-            AllowAutoRedirect = false
-        };
-
-        _httpClient = new HttpClient(handler, disposeHandler: options.Http.Handler is null)
-        {
-            BaseAddress = _endpoint,
-            Timeout = options.Http.NetworkTimeout
-        };
+        _credentials = new AwsCredentialSource(options, resolved, logger ?? (ILogger)NullLogger.Instance);
+        _tokens = new VaultTokenSource(_credentials.LoginAsync, _time);
+        _http = new VaultHttpClient(resolved.Endpoint, options.Http, _tokens, Sign) { ErrorStatusMapper = AwsErrors.JsonStatus };
     }
 
     private static VaultCircuitBreaker? CreateCircuitBreaker(AwsSecretsManagerOptions? options) => options is null
@@ -85,416 +89,497 @@ public sealed partial class AwsSecretsManagerSecretStore : VaultHttpProviderBase
     [GeneratedRegex(@"^[0-9a-zA-Z_-]{1,64}\z", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 100)]
     private static partial Regex VersionPattern();
 
-    // ---------- ISecretReader ----------
+    // ---------- Leitura ----------
 
     /// <inheritdoc />
     public Task<Result<VaultSecret>> GetSecretAsync(string name, string? version = null, CancellationToken cancellationToken = default) =>
-        ExecuteAsync("secret.get", name, Rules.Item(name, version), isWrite: false, async ct =>
+        ExecuteAsync<VaultSecret>("secret.get", name, Rules.Item(name, version), isWrite: false, async ct =>
         {
-            byte[] payloadBytes;
-            using (var buffer = new MemoryStream())
+            using var response = await CallAsync("GetSecretValue", w =>
             {
-                using (var writer = new Utf8JsonWriter(buffer))
-                {
-                    writer.WriteStartObject();
-                    writer.WriteString("SecretId", name);
-                    if (!string.IsNullOrWhiteSpace(version))
-                        writer.WriteString("VersionId", version);
-                    writer.WriteEndObject();
-                }
-                payloadBytes = buffer.ToArray();
-            }
-
-            var (status, body) = await SendAwsRequestAsync("secretsmanager.GetSecretValue", payloadBytes, ct).ConfigureAwait(false);
-
-            if (status == HttpStatusCode.NotFound)
+                w.WriteString("SecretId", name);
+                if (version is not null)
+                    w.WriteString("VersionId", version);
+            }, idempotent: true, ct).ConfigureAwait(false);
+            if (response.Status == HttpStatusCode.NotFound)
                 return VaultErrors.NotFound();
 
-            if (status != HttpStatusCode.OK)
-                return MapAwsError(status, body);
+            if (String(response.Root, "SecretString") is not { } value)
+                return VaultErrors.InvalidInput("SecretString", "O segredo é binário (SecretBinary): o provedor lê só SecretString.");
 
-            using var doc = JsonDocument.Parse(body);
-            var root = doc.RootElement;
-            var secretString = root.TryGetProperty("SecretString", out var s) ? s.GetString() : null;
-
-            if (secretString is null)
-                return VaultErrors.InvalidInput("SecretString", "Segredos binários puros não são suportados como string direta.");
-
-            var versionId = root.TryGetProperty("VersionId", out var v) ? v.GetString() ?? "1" : "1";
-            var createdDate = root.TryGetProperty("CreatedDate", out var cd) && cd.TryGetDouble(out var seconds)
-                ? DateTimeOffset.FromUnixTimeMilliseconds((long)(seconds * 1000))
-                : (DateTimeOffset?)null;
-
-            var properties = new SecretProperties
+            var created = Epoch(response.Root, "CreatedDate");
+            return new VaultSecret(new SecretProperties
             {
                 Name = name,
-                Version = versionId,
+                Version = String(response.Root, "VersionId"),
                 Enabled = true,
-                CreatedOn = createdDate,
-                UpdatedOn = createdDate
-            };
-
-            return Result<VaultSecret>.Success(new VaultSecret(properties, secretString));
+                CreatedOn = created,
+                UpdatedOn = created
+            }, value);
         }, cancellationToken);
 
     /// <inheritdoc />
+    /// <remarks>Um segredo agendado para exclusão (na janela de recuperação) não conta como existente.</remarks>
     public Task<Result<bool>> ExistsAsync(string name, CancellationToken cancellationToken = default) =>
-        ExecuteAsync("secret.exists", name, Rules.Name(name), isWrite: false, async ct =>
+        ExecuteAsync<bool>("secret.exists", name, Rules.Name(name), isWrite: false, async ct =>
         {
-            byte[] payloadBytes;
-            using (var buffer = new MemoryStream())
-            {
-                using (var writer = new Utf8JsonWriter(buffer))
-                {
-                    writer.WriteStartObject();
-                    writer.WriteString("SecretId", name);
-                    writer.WriteEndObject();
-                }
-                payloadBytes = buffer.ToArray();
-            }
-
-            var (status, body) = await SendAwsRequestAsync("secretsmanager.DescribeSecret", payloadBytes, ct).ConfigureAwait(false);
-
-            if (status == HttpStatusCode.NotFound || body.Contains("ResourceNotFoundException", StringComparison.OrdinalIgnoreCase))
-                return Result<bool>.Success(false);
-
-            if (status == HttpStatusCode.OK)
-                return Result<bool>.Success(true);
-
-            return MapAwsError(status, body);
+            using var described = await CallAsync("DescribeSecret", w => w.WriteString("SecretId", name), idempotent: true, ct).ConfigureAwait(false);
+            return described.Status == HttpStatusCode.OK && Epoch(described.Root, "DeletedDate") is null;
         }, cancellationToken);
 
     /// <inheritdoc />
+    /// <remarks>Devolve nome, versão atual (<c>AWSCURRENT</c>), datas e tags de cada segredo.</remarks>
     public Task<Result<IReadOnlyList<SecretProperties>>> ListSecretsAsync(CancellationToken cancellationToken = default) =>
-        ExecuteAsync("secret.list", null, null, isWrite: false, async ct =>
+        ExecuteAsync<IReadOnlyList<SecretProperties>>("secret.list", null, null, isWrite: false, async ct =>
         {
             var secrets = new List<SecretProperties>();
-            string? nextToken = null;
-
-            do
+            await PagesAsync("ListSecrets", null, "SecretList", item =>
             {
-                byte[] payloadBytes;
-                using (var buffer = new MemoryStream())
+                if (String(item, "Name") is not { } secretName)
+                    return;
+                EnsureListLimit(secrets.Count + 1, _maxListItems);
+                secrets.Add(new SecretProperties
                 {
-                    using (var writer = new Utf8JsonWriter(buffer))
-                    {
-                        writer.WriteStartObject();
-                        writer.WriteNumber("MaxResults", Math.Min(100, _options.MaxListItems));
-                        if (!string.IsNullOrEmpty(nextToken))
-                            writer.WriteString("NextToken", nextToken);
-                        writer.WriteEndObject();
-                    }
-                    payloadBytes = buffer.ToArray();
-                }
-
-                var (status, body) = await SendAwsRequestAsync("secretsmanager.ListSecrets", payloadBytes, ct).ConfigureAwait(false);
-                if (status != HttpStatusCode.OK)
-                    return MapAwsError(status, body);
-
-                using var doc = JsonDocument.Parse(body);
-                var root = doc.RootElement;
-
-                if (root.TryGetProperty("SecretList", out var list) && list.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var item in list.EnumerateArray())
-                    {
-                        if (item.TryGetProperty("Name", out var n) && n.GetString() is { } name)
-                        {
-                            var created = item.TryGetProperty("CreatedDate", out var cd) && cd.TryGetDouble(out var cSec)
-                                ? DateTimeOffset.FromUnixTimeMilliseconds((long)(cSec * 1000))
-                                : (DateTimeOffset?)null;
-
-                            secrets.Add(new SecretProperties
-                            {
-                                Name = name,
-                                Enabled = true,
-                                CreatedOn = created
-                            });
-
-                            if (secrets.Count >= _options.MaxListItems)
-                                return Result<IReadOnlyList<SecretProperties>>.Success(secrets.ToArray());
-                        }
-                    }
-                }
-
-                nextToken = root.TryGetProperty("NextToken", out var tokenProp) ? tokenProp.GetString() : null;
-            } while (!string.IsNullOrEmpty(nextToken));
-
-            return Result<IReadOnlyList<SecretProperties>>.Success(secrets.ToArray());
+                    Name = secretName,
+                    Version = CurrentVersion(item, "SecretVersionsToStages"),
+                    Enabled = true,
+                    CreatedOn = Epoch(item, "CreatedDate"),
+                    UpdatedOn = Epoch(item, "LastChangedDate"),
+                    Tags = CopyTags(TagMap(item))
+                });
+            }, ct).ConfigureAwait(false);
+            return secrets;
         }, cancellationToken);
 
     /// <inheritdoc />
     public Task<Result<IReadOnlyList<SecretProperties>>> ListSecretVersionsAsync(string name, CancellationToken cancellationToken = default) =>
-        ExecuteAsync("secret.versions", name, Rules.Name(name), isWrite: false, async ct =>
+        ExecuteAsync<IReadOnlyList<SecretProperties>>("secret.versions", name, Rules.Name(name), isWrite: false, async ct =>
         {
-            byte[] payloadBytes;
-            using (var buffer = new MemoryStream())
+            var versions = new List<SecretProperties>();
+            var status = await PagesAsync("ListSecretVersionIds", name, "Versions", item =>
             {
-                using (var writer = new Utf8JsonWriter(buffer))
-                {
-                    writer.WriteStartObject();
-                    writer.WriteString("SecretId", name);
-                    writer.WriteNumber("MaxResults", 100);
-                    writer.WriteEndObject();
-                }
-                payloadBytes = buffer.ToArray();
-            }
-
-            var (status, body) = await SendAwsRequestAsync("secretsmanager.ListSecretVersionIds", payloadBytes, ct).ConfigureAwait(false);
+                if (String(item, "VersionId") is not { } id)
+                    return;
+                EnsureListLimit(versions.Count + 1, _maxListItems);
+                versions.Add(new SecretProperties { Name = name, Version = id, Enabled = true, CreatedOn = Epoch(item, "CreatedDate") });
+            }, ct).ConfigureAwait(false);
 
             if (status == HttpStatusCode.NotFound)
                 return VaultErrors.NotFound();
-            if (status != HttpStatusCode.OK)
-                return MapAwsError(status, body);
-
-            using var doc = JsonDocument.Parse(body);
-            var root = doc.RootElement;
-            var versions = new List<SecretProperties>();
-
-            if (root.TryGetProperty("Versions", out var list) && list.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var item in list.EnumerateArray())
-                {
-                    var versionId = item.TryGetProperty("VersionId", out var v) ? v.GetString() : null;
-                    if (versionId is null)
-                        continue;
-
-                    var createdDate = item.TryGetProperty("CreatedDate", out var cd) && cd.TryGetDouble(out var seconds)
-                        ? DateTimeOffset.FromUnixTimeMilliseconds((long)(seconds * 1000))
-                        : (DateTimeOffset?)null;
-
-                    versions.Add(new SecretProperties
-                    {
-                        Name = name,
-                        Version = versionId,
-                        Enabled = true,
-                        CreatedOn = createdDate
-                    });
-                }
-            }
-
-            return Result<IReadOnlyList<SecretProperties>>.Success(versions.ToArray());
+            return versions;
         }, cancellationToken);
 
-    // ---------- ISecretStore ----------
+    /// <inheritdoc />
+    /// <remarks>Lista um segredo (exige a permissão <c>secretsmanager:ListSecrets</c>), pelo circuit breaker e com métrica.</remarks>
+    public Task<Result> CheckAccessAsync(CancellationToken cancellationToken = default) =>
+        ExecuteAsync("secret.health", null, null, isWrite: false, async ct =>
+        {
+            using var page = await CallAsync("ListSecrets", w => w.WriteNumber("MaxResults", 1), idempotent: true, ct).ConfigureAwait(false);
+        }, cancellationToken);
+
+    // ---------- Escrita ----------
 
     /// <inheritdoc />
-    public Task<Result<SecretProperties>> SetSecretAsync(string name, string value, SecretWriteOptions? options = null, CancellationToken cancellationToken = default)
+    /// <remarks>
+    /// Cria o segredo (<c>CreateSecret</c>) ou, se ele já existir, grava uma nova versão (<c>PutSecretValue</c>). Com
+    /// <see cref="SecretWriteOptions.Tags"/> informado, as tags do segredo passam a ser exatamente essas, também quando ele já existia.
+    /// </remarks>
+    public Task<Result<SecretProperties>> SetSecretAsync(string name, string value, SecretWriteOptions? options = null,
+        CancellationToken cancellationToken = default)
     {
         options ??= new SecretWriteOptions();
-        if (options.ContentType is not null || options.NotBefore is not null || options.ExpiresOn is not null)
-            return Task.FromResult(Result<SecretProperties>.Failure(VaultErrors.InvalidInput("options", "O AWS Secrets Manager não suporta tipo de conteúdo nem período de validade: informe apenas valor e tags.")));
+        var inputError = Rules.SetSecret(name, value, options, _time.GetUtcNow()) ??
+            (options.ContentType is not null || !options.Enabled || options.ExpiresOn is not null || options.NotBefore is not null
+                ? VaultErrors.InvalidInput("options", "O AWS Secrets Manager não tem tipo de conteúdo, habilitar/desabilitar nem validade: informe só valor e tags.")
+                : null);
 
-        var inputError = Rules.SetSecret(name, value, options, _time.GetUtcNow());
-
-        return ExecuteAsync("secret.set", name, inputError, isWrite: true, async ct =>
+        return ExecuteAsync<SecretProperties>("secret.set", name, inputError, isWrite: true, async ct =>
         {
-            byte[] createPayloadBytes;
-            using (var buffer = new MemoryStream())
+            // O token vira o VersionId e torna a gravação idempotente: repetida, ela não cria outra versão
+            var requestToken = Guid.NewGuid().ToString("N");
+            using (var created = await CallAsync("CreateSecret", w =>
+                   {
+                       w.WriteString("Name", name);
+                       w.WriteString("ClientRequestToken", requestToken);
+                       w.WriteString("SecretString", value);
+                       if (options.Tags is { Count: > 0 } tags)
+                           WriteTags(w, tags);
+                   }, idempotent: true, ct, conflictAllowed: true).ConfigureAwait(false))
             {
-                using (var writer = new Utf8JsonWriter(buffer))
-                {
-                    writer.WriteStartObject();
-                    writer.WriteString("Name", name);
-                    writer.WriteString("SecretString", value);
-                    if (options.Tags is { Count: > 0 })
-                    {
-                        writer.WriteStartArray("Tags");
-                        foreach (var (k, v) in options.Tags)
-                        {
-                            writer.WriteStartObject();
-                            writer.WriteString("Key", k);
-                            writer.WriteString("Value", v);
-                            writer.WriteEndObject();
-                        }
-                        writer.WriteEndArray();
-                    }
-                    writer.WriteEndObject();
-                }
-                createPayloadBytes = buffer.ToArray();
+                if (created.Status == HttpStatusCode.OK)
+                    return Written(name, String(created.Root, "VersionId") ?? requestToken, options.Tags);
             }
 
-            var (status, body) = await SendAwsRequestAsync("secretsmanager.CreateSecret", createPayloadBytes, ct).ConfigureAwait(false);
-
-            if (status == HttpStatusCode.OK)
+            // Já existe: nova versão com o mesmo token
+            string version;
+            using (var put = await CallAsync("PutSecretValue", w =>
+                   {
+                       w.WriteString("SecretId", name);
+                       w.WriteString("ClientRequestToken", requestToken);
+                       w.WriteString("SecretString", value);
+                   }, idempotent: true, ct).ConfigureAwait(false))
             {
-                using var doc = JsonDocument.Parse(body);
-                var root = doc.RootElement;
-                var versionId = root.TryGetProperty("VersionId", out var v) ? v.GetString() ?? "1" : "1";
-                return Result<SecretProperties>.Success(new SecretProperties { Name = name, Version = versionId, Enabled = true });
+                if (put.Status == HttpStatusCode.NotFound)
+                    return VaultErrors.NotFound();
+                version = String(put.Root, "VersionId") ?? requestToken;
             }
 
-            if (body.Contains("ResourceExistsException", StringComparison.OrdinalIgnoreCase))
-            {
-                byte[] putPayloadBytes;
-                using (var buffer = new MemoryStream())
-                {
-                    using (var writer = new Utf8JsonWriter(buffer))
-                    {
-                        writer.WriteStartObject();
-                        writer.WriteString("SecretId", name);
-                        writer.WriteString("SecretString", value);
-                        writer.WriteEndObject();
-                    }
-                    putPayloadBytes = buffer.ToArray();
-                }
-
-                var (putStatus, putBody) = await SendAwsRequestAsync("secretsmanager.PutSecretValue", putPayloadBytes, ct).ConfigureAwait(false);
-                if (putStatus != HttpStatusCode.OK)
-                    return MapAwsError(putStatus, putBody);
-
-                using var putDoc = JsonDocument.Parse(putBody);
-                var putRoot = putDoc.RootElement;
-                var versionId = putRoot.TryGetProperty("VersionId", out var v) ? v.GetString() ?? "1" : "1";
-                return Result<SecretProperties>.Success(new SecretProperties { Name = name, Version = versionId, Enabled = true });
-            }
-
-            return MapAwsError(status, body);
+            if (options.Tags is { } desired && await ReplaceTagsAsync(name, desired, ct).ConfigureAwait(false) is { } tagError)
+                return tagError;
+            return Written(name, version, options.Tags);
         }, cancellationToken);
     }
 
     /// <inheritdoc />
-    public Task<Result<SecretProperties>> UpdateSecretPropertiesAsync(string name, SecretPropertiesUpdate update, string? version = null, CancellationToken cancellationToken = default)
+    /// <remarks>
+    /// Só <see cref="SecretPropertiesUpdate.Tags"/> é suportado, e as tags valem para o segredo inteiro: com tags, não informe a
+    /// versão. As tags passam a ser exatamente as informadas (<c>UntagResource</c> das que saíram e <c>TagResource</c> das novas ou
+    /// alteradas; as duas chamadas não são atômicas). Sem nada a alterar, confere que o segredo (e a versão, se informada) existe.
+    /// Permissões: <c>secretsmanager:DescribeSecret</c>, <c>TagResource</c> e <c>UntagResource</c>.
+    /// </remarks>
+    public Task<Result<SecretProperties>> UpdateSecretPropertiesAsync(string name, SecretPropertiesUpdate update, string? version = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(update);
-        if (update.ContentType is not null || update.Enabled is not null || update.ExpiresOn is not null || update.NotBefore is not null)
-            return Task.FromResult(Result<SecretProperties>.Failure(VaultErrors.InvalidInput("update", "O AWS Secrets Manager não suporta tipo de conteúdo, habilitar/desabilitar nem validade.")));
+        var inputError = Rules.UpdateSecret(name, version, update, _time.GetUtcNow()) ??
+            (update.ContentType is not null || update.Enabled is not null || update.ExpiresOn is not null || update.NotBefore is not null
+                ? VaultErrors.InvalidInput("update", "O AWS Secrets Manager só altera as tags: não há tipo de conteúdo, habilitar/desabilitar nem validade.")
+                : null) ??
+            (update.Tags is not null && version is not null
+                ? VaultErrors.InvalidInput("version", "As tags do AWS Secrets Manager valem para o segredo inteiro, não para uma versão: não informe a versão.")
+                : null);
 
-        var inputError = Rules.UpdateSecret(name, version, update, _time.GetUtcNow());
-
-        return ExecuteAsync("secret.update", name, inputError, isWrite: true, async ct =>
+        return ExecuteAsync<SecretProperties>("secret.update", name, inputError, isWrite: true, async ct =>
         {
-            byte[] payloadBytes;
-            using (var buffer = new MemoryStream())
+            Dictionary<string, string> current;
+            DateTimeOffset? createdOn, updatedOn;
+            string? currentVersion;
+            using (var described = await CallAsync("DescribeSecret", w => w.WriteString("SecretId", name), idempotent: true, ct).ConfigureAwait(false))
             {
-                using (var writer = new Utf8JsonWriter(buffer))
-                {
-                    writer.WriteStartObject();
-                    writer.WriteString("SecretId", name);
-                    writer.WriteEndObject();
-                }
-                payloadBytes = buffer.ToArray();
+                if (described.Status == HttpStatusCode.NotFound)
+                    return VaultErrors.NotFound();
+                if (Epoch(described.Root, "DeletedDate") is not null)
+                    return VaultErrors.Conflict();   // agendado para exclusão
+                if (version is not null && !HasVersion(described.Root, version))
+                    return VaultErrors.NotFound();
+
+                current = TagMap(described.Root);
+                createdOn = Epoch(described.Root, "CreatedDate");
+                updatedOn = Epoch(described.Root, "LastChangedDate");
+                currentVersion = CurrentVersion(described.Root, "VersionIdsToStages");
             }
 
-            var (status, body) = await SendAwsRequestAsync("secretsmanager.DescribeSecret", payloadBytes, ct).ConfigureAwait(false);
+            IReadOnlyDictionary<string, string> tags = current;
+            if (update.Tags is { } desired)
+            {
+                if (await ApplyTagsAsync(name, current, desired, ct).ConfigureAwait(false) is { } tagError)
+                    return tagError;
+                tags = desired;
+            }
 
-            if (status != HttpStatusCode.OK)
-                return MapAwsError(status, body);
-
-            return Result<SecretProperties>.Success(new SecretProperties { Name = name, Version = version ?? "1", Enabled = true });
+            return new SecretProperties
+            {
+                Name = name,
+                Version = version ?? currentVersion,
+                Enabled = true,
+                CreatedOn = createdOn,
+                UpdatedOn = updatedOn,
+                Tags = CopyTags(tags)
+            };
         }, cancellationToken);
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Agenda a exclusão com a janela de recuperação padrão da AWS (30 dias); <see cref="DeletedVaultItem.ScheduledPurgeDate"/> é a
+    /// data informada pela AWS. O provedor não expõe a recuperação.
+    /// </remarks>
     public Task<Result<DeletedVaultItem>> DeleteSecretAsync(string name, CancellationToken cancellationToken = default) =>
-        ExecuteAsync("secret.delete", name, Rules.Name(name), isWrite: true, async ct =>
+        ExecuteAsync<DeletedVaultItem>("secret.delete", name, Rules.Name(name), isWrite: true, async ct =>
         {
-            byte[] payloadBytes;
-            using (var buffer = new MemoryStream())
-            {
-                using (var writer = new Utf8JsonWriter(buffer))
-                {
-                    writer.WriteStartObject();
-                    writer.WriteString("SecretId", name);
-                    writer.WriteEndObject();
-                }
-                payloadBytes = buffer.ToArray();
-            }
+            using var deleted = await CallAsync("DeleteSecret", w => w.WriteString("SecretId", name), idempotent: false, ct).ConfigureAwait(false);
+            if (deleted.Status == HttpStatusCode.NotFound)
+                return VaultErrors.NotFound();
 
-            var (status, body) = await SendAwsRequestAsync("secretsmanager.DeleteSecret", payloadBytes, ct).ConfigureAwait(false);
-            if (status == HttpStatusCode.NotFound)
-                return Result<DeletedVaultItem>.Failure(VaultErrors.NotFound());
-
-            if (status == HttpStatusCode.OK)
-                return Result<DeletedVaultItem>.Success(new DeletedVaultItem(name, _time.GetUtcNow(), ScheduledPurgeDate: _time.GetUtcNow().AddDays(30)));
-
-            return MapAwsError(status, body);
+            var now = _time.GetUtcNow();
+            return new DeletedVaultItem(name, now, ScheduledPurgeDate: Epoch(deleted.Root, "DeletionDate") ?? now.AddDays(30));
         }, cancellationToken);
-
-    // ---------- IVaultHealthProbe ----------
-
-    /// <inheritdoc />
-    public async Task<Result> CheckAccessAsync(CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            byte[] payloadBytes;
-            using (var buffer = new MemoryStream())
-            {
-                using (var writer = new Utf8JsonWriter(buffer))
-                {
-                    writer.WriteStartObject();
-                    writer.WriteNumber("MaxResults", 1);
-                    writer.WriteEndObject();
-                }
-                payloadBytes = buffer.ToArray();
-            }
-
-            var (status, body) = await SendAwsRequestAsync("secretsmanager.ListSecrets", payloadBytes, cancellationToken).ConfigureAwait(false);
-
-            return status == HttpStatusCode.OK
-                ? Result.Success()
-                : Result.Failure(VaultErrors.Unavailable());
-        }
-        catch
-        {
-            return Result.Failure(VaultErrors.Unavailable());
-        }
-    }
-
-    // ---------- HTTP & SigV4 Helper ----------
-
-    private async Task<(HttpStatusCode Status, string Body)> SendAwsRequestAsync(string target, byte[] jsonBytes, CancellationToken cancellationToken)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Post, _endpoint)
-        {
-            Content = new ByteArrayContent(jsonBytes)
-        };
-
-        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-amz-json-1.1");
-        request.Headers.Add("x-amz-target", target);
-
-        AwsSigV4Signer.Sign(request, jsonBytes, _options.Region, _accessKey, _secretKey, _sessionToken, _time.GetUtcNow());
-
-        using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-
-        return (response.StatusCode, responseBody);
-    }
-
-    private static Error MapAwsError(HttpStatusCode status, string responseBody)
-    {
-        if (responseBody.Contains("ResourceNotFoundException", StringComparison.OrdinalIgnoreCase))
-            return VaultErrors.NotFound();
-        if (responseBody.Contains("ResourceExistsException", StringComparison.OrdinalIgnoreCase))
-            return VaultErrors.Conflict();
-        if (responseBody.Contains("AccessDeniedException", StringComparison.OrdinalIgnoreCase) || status == HttpStatusCode.Forbidden)
-            return VaultErrors.AccessDenied();
-        if (responseBody.Contains("ThrottlingException", StringComparison.OrdinalIgnoreCase) || status == (HttpStatusCode)429)
-            return VaultErrors.Throttled();
-        if (responseBody.Contains("InvalidRequestException", StringComparison.OrdinalIgnoreCase) ||
-            responseBody.Contains("InvalidParameterException", StringComparison.OrdinalIgnoreCase))
-            return VaultErrors.InvalidInput("request", "Parâmetro inválido na requisição ao AWS Secrets Manager.");
-
-        return status switch
-        {
-            HttpStatusCode.NotFound => VaultErrors.NotFound(),
-            HttpStatusCode.Conflict => VaultErrors.Conflict(),
-            HttpStatusCode.Unauthorized => VaultErrors.AuthenticationFailed(),
-            HttpStatusCode.Forbidden => VaultErrors.AccessDenied(),
-            (HttpStatusCode)429 => VaultErrors.Throttled(),
-            HttpStatusCode.ServiceUnavailable or HttpStatusCode.BadGateway or HttpStatusCode.GatewayTimeout => VaultErrors.Unavailable(),
-            _ => VaultErrors.ProviderFailure()
-        };
-    }
 
     /// <inheritdoc />
     public void Dispose()
     {
-        if (!_disposed)
+        if (Interlocked.Exchange(ref _disposed, 1) == 1)
+            return;
+        _http.Dispose();
+        _tokens.Dispose();
+        _credentials.Dispose();
+    }
+
+    // ---------- HTTP ----------
+
+    /// <summary>Assina a tentativa com a credencial atual (data de agora: cada retentativa é assinada de novo).</summary>
+    private void Sign(HttpRequestMessage request, string token) =>
+        AwsSigV4Signer.Sign(request, AwsCredentials.Decode(token), _region, _time.GetUtcNow());
+
+    /// <summary>
+    /// Chama uma ação da API. Devolve 200 com o JSON, 404 (item inexistente) e, só com <paramref name="conflictAllowed"/>, 409; os
+    /// demais erros lançam <see cref="VaultHttpException"/> com o status equivalente e o código da AWS (seguro para log). O corpo
+    /// enviado é zerado no fim (pode conter o valor do segredo).
+    /// </summary>
+    private async Task<AwsResponse> CallAsync(string action, Action<Utf8JsonWriter> write, bool idempotent, CancellationToken ct,
+        bool conflictAllowed = false)
+    {
+        var payload = Json(write);
+        var payloadHash = AwsSigV4Signer.HashPayload(payload);
+        try
         {
-            _httpClient.Dispose();
-            _disposed = true;
+            using var response = await _http.SendAsync(() => Request(action, payload, payloadHash), idempotent, ct).ConfigureAwait(false);
+            if (response.StatusCode == HttpStatusCode.NotFound || (conflictAllowed && response.StatusCode == HttpStatusCode.Conflict))
+                return new AwsResponse(response.StatusCode, null);
+            if (!response.IsSuccessStatusCode)
+                await ThrowAsync(response, ct).ConfigureAwait(false);
+
+            return new AwsResponse(HttpStatusCode.OK, await _http.ReadBytesAsync(response, ct).ConfigureAwait(false));
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(payload);
+        }
+    }
+
+    private HttpRequestMessage Request(string action, byte[] payload, string payloadHash)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, _http.BaseAddress)
+        {
+            Content = new ByteArrayContent(payload) { Headers = { ContentType = new MediaTypeHeaderValue("application/x-amz-json-1.1") } }
+        };
+        request.Headers.TryAddWithoutValidation("X-Amz-Target", "secretsmanager." + action);
+        request.Options.Set(AwsSigV4Signer.PayloadHashKey, payloadHash);
+        return request;
+    }
+
+    /// <summary>Lança o erro com o código da AWS como detalhe (o código é só para o log; a conversão usa o status equivalente).</summary>
+    private async Task ThrowAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        string? code = null;
+        try
+        {
+            var body = await _http.ReadBytesAsync(response, ct).ConfigureAwait(false);
+            code = AwsErrors.JsonCode(body);
+        }
+        catch (Exception exception) when (exception is VaultResponseTooLargeException or TimeoutException or HttpRequestException)
+        {
+            // Sem o código: o status basta para a conversão
+        }
+
+        VaultHttpClient.EnsureSuccess(response, code);
+    }
+
+    /// <summary>Passa por todas as páginas (<c>NextToken</c>), com proteção contra paginação sem fim. 404 → devolve o status.</summary>
+    private async Task<HttpStatusCode> PagesAsync(string action, string? secretId, string arrayName, Action<JsonElement> each, CancellationToken ct)
+    {
+        string? next = null;
+        var pages = 0;
+        do
+        {
+            if (++pages > _maxListItems + 1)
+                throw new JsonException("Paginação da listagem sem fim.");
+
+            var token = next;
+            using var page = await CallAsync(action, w =>
+            {
+                if (secretId is not null)
+                    w.WriteString("SecretId", secretId);
+                w.WriteNumber("MaxResults", PageSize);
+                if (token is not null)
+                    w.WriteString("NextToken", token);
+            }, idempotent: true, ct).ConfigureAwait(false);
+            if (page.Status == HttpStatusCode.NotFound)
+                return HttpStatusCode.NotFound;
+
+            if (page.Root.TryGetProperty(arrayName, out var items) && items.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in items.EnumerateArray())
+                    each(item);
+            }
+
+            next = String(page.Root, "NextToken");
+            if (next is not null && string.Equals(next, token, StringComparison.Ordinal))
+                throw new JsonException("A listagem devolveu a mesma página de novo.");
+        }
+        while (next is not null);
+
+        return HttpStatusCode.OK;
+    }
+
+    /// <summary>Lê as tags atuais e as substitui pelas informadas. <c>null</c> = sucesso.</summary>
+    private async Task<Error?> ReplaceTagsAsync(string name, IReadOnlyDictionary<string, string> desired, CancellationToken ct)
+    {
+        Dictionary<string, string> current;
+        using (var described = await CallAsync("DescribeSecret", w => w.WriteString("SecretId", name), idempotent: true, ct).ConfigureAwait(false))
+        {
+            if (described.Status == HttpStatusCode.NotFound)
+                return VaultErrors.NotFound();
+            current = TagMap(described.Root);
+        }
+
+        return await ApplyTagsAsync(name, current, desired, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Remove as tags que saíram e grava as novas ou alteradas (chaves comparadas exatamente, como na AWS).</summary>
+    private async Task<Error?> ApplyTagsAsync(string name, Dictionary<string, string> current, IReadOnlyDictionary<string, string> desired,
+        CancellationToken ct)
+    {
+        var wanted = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (key, value) in desired)
+            wanted[key] = value;
+
+        var remove = current.Keys.Where(k => !wanted.ContainsKey(k)).ToList();
+        if (remove.Count > 0)
+        {
+            using var untagged = await CallAsync("UntagResource", w =>
+            {
+                w.WriteString("SecretId", name);
+                w.WriteStartArray("TagKeys");
+                foreach (var key in remove)
+                    w.WriteStringValue(key);
+                w.WriteEndArray();
+            }, idempotent: true, ct).ConfigureAwait(false);
+            if (untagged.Status == HttpStatusCode.NotFound)
+                return VaultErrors.NotFound();
+        }
+
+        var put = wanted.Where(t => !current.TryGetValue(t.Key, out var old) || !string.Equals(old, t.Value, StringComparison.Ordinal)).ToList();
+        if (put.Count > 0)
+        {
+            using var tagged = await CallAsync("TagResource", w =>
+            {
+                w.WriteString("SecretId", name);
+                WriteTags(w, put);
+            }, idempotent: true, ct).ConfigureAwait(false);
+            if (tagged.Status == HttpStatusCode.NotFound)
+                return VaultErrors.NotFound();
+        }
+
+        return null;
+    }
+
+    // ---------- JSON ----------
+
+    /// <summary>Corpo JSON escrito com <see cref="Utf8JsonWriter"/> (compatível com AOT). O buffer intermediário é zerado.</summary>
+    private static byte[] Json(Action<Utf8JsonWriter> write)
+    {
+        var buffer = new ArrayBufferWriter<byte>(256);
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartObject();
+            write(writer);
+            writer.WriteEndObject();
+        }
+
+        var result = buffer.WrittenSpan.ToArray();
+        buffer.Clear();
+        return result;
+    }
+
+    private static void WriteTags(Utf8JsonWriter writer, IEnumerable<KeyValuePair<string, string>> tags)
+    {
+        writer.WriteStartArray("Tags");
+        foreach (var (key, value) in tags)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("Key", key);
+            writer.WriteString("Value", value);
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray();
+    }
+
+    private static Result<SecretProperties> Written(string name, string version, IReadOnlyDictionary<string, string>? tags) =>
+        new SecretProperties { Name = name, Version = version, Enabled = true, Tags = CopyTags(tags) };
+
+    private static string? String(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+    /// <summary>Data em segundos desde 1970 (número com fração), como a AWS devolve. Fora da faixa: <c>null</c>.</summary>
+    private static DateTimeOffset? Epoch(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var seconds) &&
+        double.IsFinite(seconds) && seconds is > 0 and < 253_402_300_799
+            ? DateTimeOffset.FromUnixTimeMilliseconds((long)(seconds * 1000))
+            : null;
+
+    /// <summary>Tags de um segredo (<c>[{"Key":..,"Value":..}]</c>); entradas malformadas são ignoradas.</summary>
+    private static Dictionary<string, string> TagMap(JsonElement element)
+    {
+        var tags = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (element.TryGetProperty("Tags", out var list) && list.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var tag in list.EnumerateArray())
+            {
+                if (tag.ValueKind == JsonValueKind.Object && String(tag, "Key") is { } key)
+                    tags[key] = String(tag, "Value") ?? string.Empty;
+            }
+        }
+
+        return tags;
+    }
+
+    /// <summary>Versão com o rótulo <c>AWSCURRENT</c> num mapa versão → rótulos.</summary>
+    private static string? CurrentVersion(JsonElement element, string mapName)
+    {
+        if (!element.TryGetProperty(mapName, out var map) || map.ValueKind != JsonValueKind.Object)
+            return null;
+        foreach (var version in map.EnumerateObject())
+        {
+            if (version.Value.ValueKind == JsonValueKind.Array &&
+                version.Value.EnumerateArray().Any(stage => stage.ValueKind == JsonValueKind.String && stage.ValueEquals(CurrentStage)))
+                return version.Name;
+        }
+
+        return null;
+    }
+
+    private static bool HasVersion(JsonElement element, string version) =>
+        element.TryGetProperty("VersionIdsToStages", out var map) && map.ValueKind == JsonValueKind.Object && map.TryGetProperty(version, out _);
+
+    /// <summary>Resposta de uma ação: status (200, 404 ou 409) e o JSON. Ao descartar, o buffer (que pode ter valores) é zerado.</summary>
+    private sealed class AwsResponse : IDisposable
+    {
+        private static readonly byte[] EmptyObject = "{}"u8.ToArray();
+        private readonly byte[]? _buffer;
+        private readonly JsonDocument _document;
+
+        internal AwsResponse(HttpStatusCode status, byte[]? buffer)
+        {
+            Status = status;
+            _buffer = buffer;
+            try
+            {
+                _document = JsonDocument.Parse(buffer is { Length: > 0 } ? buffer : EmptyObject, new JsonDocumentOptions { MaxDepth = 32 });
+                if (_document.RootElement.ValueKind != JsonValueKind.Object)
+                {
+                    _document.Dispose();
+                    throw new JsonException("Resposta da AWS não é um objeto JSON.");
+                }
+            }
+            catch (JsonException)
+            {
+                if (buffer is not null)
+                    CryptographicOperations.ZeroMemory(buffer);   // a resposta fora do formato também pode conter valores
+                throw;
+            }
+        }
+
+        public HttpStatusCode Status { get; }
+
+        public JsonElement Root => _document.RootElement;
+
+        public void Dispose()
+        {
+            _document.Dispose();
+            if (_buffer is not null)
+                CryptographicOperations.ZeroMemory(_buffer);
         }
     }
 }

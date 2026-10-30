@@ -63,7 +63,7 @@ classDiagram
 |---|:-:|:-:|:-:|:-:|
 | [Azure Key Vault](provedor-azure-key-vault.md) | ✅ | ✅ | ✅ | ✅ |
 | [AWS Secrets Manager](provedor-aws-secrets-manager.md) | ✅ | ✅ | — | — |
-| [Google Secret Manager](provedor-google-secret-manager.md) | ✅ | ✅ | ✅ | — |
+| [Google Secret Manager](provedor-google-secret-manager.md) | ✅ | ✅ | — | — |
 | [HashiCorp Vault](provedor-hashicorp-vault.md) (KV v2) | ✅ | ✅ | ✅ | — |
 | [Infisical](provedor-infisical.md) | ✅ | ✅ | — | — |
 | [Synced / Variáveis de Ambiente](provedor-synced.md) | ✅ | — | — | — |
@@ -482,6 +482,9 @@ Propriedades `null` não são alteradas: `Enabled`, `ExpiresOn`, `NotBefore`, `C
 
 > [!TIP]
 > Só use `disablePreviousVersions: true` quando nenhum consumidor depende mais das versões antigas; caso contrário, deixe-as expirar.
+
+> [!NOTE]
+> A rotação depende do que o provedor aceita. `validity` (grava `ExpiresOn`) só funciona no Azure Key Vault e no provedor em memória: HashiCorp Vault, Infisical, AWS e Google recusam a gravação com `VAULT_ENTRADA_INVALIDA`. `disablePreviousVersions: true` desabilita versões por `UpdateSecretPropertiesAsync(Enabled = false)`, que só Azure, Google e o provedor em memória aceitam; nos demais o resultado volta com `IsComplete = false` e uma falha por versão anterior.
 
 Modelo de ameaças e controles completos: [Segurança](seguranca.md).
 

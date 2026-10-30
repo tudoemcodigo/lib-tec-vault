@@ -84,7 +84,7 @@ public class LeakUnderLoadTests
         })));
 
         // Também o IConfiguration (carga com falhas e recarga) e a criptografia
-        var configuration = new ConfigurationBuilder().AddTecVault(cache, o => o.Optional = true, loggerFactory: factory).Build();
+        var configuration = new ConfigurationBuilder().AddTecVault(cache, o => { o.Prefix = "s"; o.Optional = true; }, loggerFactory: factory).Build();
         outcomes.Add(string.Join('\n', configuration.AsEnumerable().Select(e => e.Key)));
         (configuration as IDisposable)?.Dispose();
 

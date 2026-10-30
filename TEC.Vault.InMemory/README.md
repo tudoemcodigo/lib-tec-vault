@@ -56,4 +56,4 @@ builder.Services.AddTecVault(vault => vault.UseInMemory(o => o.InitialSecrets["d
 
 Opções (`InitialSecrets`, `MaxBackups`, `Stores`, `TimeProvider`...), diferenças de um cofre real e a trava de ambiente: [docs/provedor-em-memoria.md](https://github.com/tudoemcodigo/lib-tec-vault/blob/main/docs/provedor-em-memoria.md).
 
-`net8.0` e `net10.0` · Native AOT · [MIT](https://github.com/tudoemcodigo/lib-tec-vault/blob/main/LICENSE) · Roberto Oliveira, equipe Tudo em Código
+`net10.0` · Native AOT · [Apache 2.0](https://github.com/tudoemcodigo/lib-tec-vault/blob/main/LICENSE) · Roberto Oliveira, equipe Tudo em Código

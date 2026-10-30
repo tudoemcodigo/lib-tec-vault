@@ -4,7 +4,7 @@
 
 # 🔷 TEC.Vault.GoogleSecretManager
 
-**Provedor nativo para o Google Cloud Secret Manager: leitura, gravação e destruição de versões de segredos via API REST v1 oficial do Google Cloud, sem SDKs pesados de terceiros e 100% compatível com Native AOT.**
+**Provedor nativo para o Google Cloud Secret Manager: leitura, gravação, exclusão e habilitar/desabilitar versões de segredos pela API REST v1 do Google Cloud, sem SDKs pesados de terceiros e compatível com Native AOT.**
 
 [📚 Documentação Completa](https://github.com/tudoemcodigo/lib-tec-vault/blob/main/docs/provedor-google-secret-manager.md) · [📝 Changelog](https://github.com/tudoemcodigo/lib-tec-vault/blob/main/CHANGELOG.md) · [🐙 Repositório](https://github.com/tudoemcodigo/lib-tec-vault)
 
@@ -14,12 +14,12 @@
 
 ## 🎯 Visão Geral
 
-- **Sem SDKs Pesados do Google Cloud:** Comunicação REST direta via `SocketsHttpHandler` com a API Secret Manager v1.
-- **Autenticação Automática e Sem Segredos:** Suporte nativo ao Google Cloud Metadata Server (Google Kubernetes Engine, Cloud Run, Compute Engine) ou Service Account JSON (via `GOOGLE_APPLICATION_CREDENTIALS` ou options).
+- **Sem SDKs Pesados do Google Cloud:** Comunicação REST direta com a API Secret Manager v1, sobre o mesmo `VaultHttpClient` do HashiCorp Vault e do Infisical.
+- **Autenticação:** token estático em variável de ambiente, Service Account JSON (`GOOGLE_APPLICATION_CREDENTIALS` ou opções, com `token_uri` conferido) ou o Metadata Server do Google (GKE, Cloud Run, Compute Engine). O token fica em cache, é renovado antes de expirar e é descartado quando o Google responde 401.
 - **Assinador JWT RSA-SHA256 Interno:** Criação e assinatura de tokens de acesso OAuth2 internamente, sem bibliotecas de terceiros.
 - **Native AOT e Trimming:** Zero reflexão dinâmica (`PublishAot` e trimming 100% validados sem avisos de compilação).
-- **Lixeira e Destruição Segura:** Suporte a destruição de versões e listagem de versões desativadas/destruídas através da interface `ISecretRecycleBin`.
-- **Resiliência e Observabilidade:** Retentativas exponenciais com jitter, circuit breaker e métricas OpenTelemetry (`ActivitySource` e `Meter`).
+- **Escopo:** só segredos (`ISecretStore`), com labels aplicadas de verdade (`PATCH`) e habilitar/desabilitar versões. Não há lixeira nem backup: `DeleteSecretAsync` remove o segredo e todas as versões sem recuperação. Detalhes e limitações em [docs/provedor-google-secret-manager.md](https://github.com/tudoemcodigo/lib-tec-vault/blob/main/docs/provedor-google-secret-manager.md).
+- **Resiliência e observabilidade:** retentativa com backoff, tempo limite na leitura do corpo, teto de resposta, circuit breaker e telemetria OpenTelemetry (`ActivitySource` e `Meter`).
 
 ---
 
@@ -44,7 +44,9 @@ builder.Services.AddTecVault(vault => vault
     .UseGoogleSecretManager(options =>
     {
         options.ProjectId = "meu-projeto-gcp";
-        // Credenciais resolvidas do Google Metadata Server ou Service Account JSON
+        // Ordem das credenciais: token estático (AccessToken em código ou AccessTokenVariable), depois
+        // Service Account JSON (CredentialsJsonVariable, CredentialsJsonFile ou GOOGLE_APPLICATION_CREDENTIALS),
+        // depois o Metadata Server (UseMetadataServer)
     })
     .EnableSecretCache(TimeSpan.FromMinutes(5)));
 ```
@@ -72,4 +74,4 @@ builder.Services.AddTecVault(
 
 ## 📄 Licença
 
-Distribuído sob a licença [MIT](https://github.com/tudoemcodigo/lib-tec-vault/blob/main/LICENSE). Copyright © Tudo em Código.
+Distribuído sob a licença [Apache 2.0](https://github.com/tudoemcodigo/lib-tec-vault/blob/main/LICENSE). Copyright © Tudo em Código.

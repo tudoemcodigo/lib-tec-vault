@@ -142,12 +142,12 @@ public async Task<Result<TokenDto>> Handle(GetToken request, CancellationToken c
 | `AccessDeniedCode` | `VAULT_ACESSO_NEGADO` | ExternalService | 502 🔒 | Identidade da **aplicação** sem papel; firewall/rede do cofre recusou | Conceda o papel mínimo; libere a rede |
 | `AuthenticationFailedCode` | `VAULT_AUTENTICACAO_FALHOU` | ExternalService | 502 🔒 | Identidade indisponível, login recusado ou expirado, credencial ausente ou ilegível, tenant errado | Confira identidade, `TenantId`, arquivo/variável da credencial |
 | `ThrottledCode` | `VAULT_LIMITE_EXCEDIDO` | ExternalService | 502 🔒 | Limite de requisições do cofre (429) | Ligue o cache; reduza leituras e concorrência |
-| `UnavailableCode` | `VAULT_INDISPONIVEL` | ExternalService | 502 🔒 | Rede, DNS, tempo limite, 408/5xx, retentativas esgotadas, 503 com `Retry-After` acima do aceito | Verifique rede e status do cofre; ajuste tempos limite |
+| `UnavailableCode` | `VAULT_INDISPONIVEL` | ExternalService | 502 🔒 | Rede, DNS, tempo limite (também na leitura do corpo, no login e na leitura compartilhada do cache), 408/5xx, retentativas esgotadas, 503 com `Retry-After` acima do aceito | Verifique rede e status do cofre; ajuste tempos limite |
 | `CircuitOpenCode` | `VAULT_CIRCUITO_ABERTO` | ExternalService | 502 🔒 | Circuit breaker aberto: o cofre falhou repetidas vezes (`VAULT_INDISPONIVEL`/`VAULT_LIMITE_EXCEDIDO`) e a chamada foi recusada sem consultá-lo | Aguarde a volta do cofre; veja os eventos 2011-2014 e [🔁 Resiliência](resiliencia.md) |
 | `ProviderFailureCode` | `VAULT_FALHA` | ExternalService | 502 🔒 | Falha não classificada (pilha no log, evento 2005); resposta fora do formato ou acima do limite de tamanho | Veja o log |
 | `NotSupportedCode` | `VAULT_OPERACAO_NAO_SUPORTADA` | Failure | 500 🔒 | Opção que o provedor não oferece (HSM, emissor, escrita pendente de aprovação no Infisical) | Remova a opção ou troque de provedor |
 | `CanceledCode` | `VAULT_OPERACAO_CANCELADA` | Failure | 500 🔒 | Só em `SecretRotationResult.Errors`: rotação cancelada **depois** de gravar a nova versão | Conclua com `DisablePreviousSecretVersionsAsync` (idempotente) |
-| `TooManyItemsCode` | `VAULT_LISTAGEM_ACIMA_DO_LIMITE` | Failure | 500 🔒 | A listagem passou do `MaxListItems` do provedor (Azure Key Vault, HashiCorp Vault); o restante não é lido | Use pasta/prefixo mais específico ou aumente `MaxListItems` |
+| `TooManyItemsCode` | `VAULT_LISTAGEM_ACIMA_DO_LIMITE` | Failure | 500 🔒 | A listagem passou do `MaxListItems` do provedor (Azure Key Vault, HashiCorp Vault, Infisical, AWS, Google) ou do `MaxItems` do Synced; o restante não é lido. Nenhum provedor devolve uma lista cortada | Use pasta/prefixo mais específico ou aumente o limite |
 
 🔒 = a mensagem nunca é exposta ao cliente da API (regra do TEC.Core para `ExternalService` e `Failure`). Um 403 do cofre é problema de configuração da aplicação, não do usuário.
 
@@ -162,7 +162,7 @@ Erros de **configuração** são detectados na subida e lançam exceção (falha
 
 | Exceção | Origem |
 |---|---|
-| `InvalidOperationException` | `AddTecVault` chamado duas vezes (de propósito: uma segunda configuração nunca é ignorada em silêncio); nenhum provedor; dois provedores para a mesma família; classe de provedor já registrada no container; opções inválidas de qualquer provedor (`AzureKeyVaultOptions`, `HashiCorpVaultOptions`, `InfisicalOptions`, opções do Synced e do HTTP, inclusive `MaxListItems` fora de 1..1.000.000); `Developer` ou provedor em memória fora de Development; `Stores` inválido; endereço HTTP do cofre fora de localhost/Development; credencial com arquivo **e** variável (ou nenhum); carga inicial do `IConfiguration` com falha (sem `Optional`); na [escolha por configuração](configuracao-por-appsettings.md): provedor desconhecido, chave desconhecida, valor inválido, segredo em texto |
+| `InvalidOperationException` | `AddTecVault` chamado duas vezes (de propósito: uma segunda configuração nunca é ignorada em silêncio); nenhum provedor; dois provedores para a mesma família; classe de provedor já registrada no container; opções inválidas de qualquer provedor (`AzureKeyVaultOptions`, `HashiCorpVaultOptions`, `InfisicalOptions`, opções do Synced e do HTTP, inclusive `MaxListItems` fora de 1..1.000.000); `Developer` ou provedor em memória fora de Development; `Stores` inválido; endereço HTTP do cofre fora de localhost/Development; credencial com arquivo **e** variável (ou nenhum); `VaultConfigurationOptions.Prefix` ausente ou vazio na fonte de `IConfiguration` (`Vault:Configuration:Prefix` na escolha por configuração); opções do AWS e do Google (região, endereço, fonte de credenciais, arquivo de credenciais configurado e ausente, endereço de container fora dos hosts aceitos); carga inicial do `IConfiguration` com falha (sem `Optional`); na [escolha por configuração](configuracao-por-appsettings.md): provedor desconhecido, chave desconhecida, valor inválido, segredo em texto |
 | `ArgumentOutOfRangeException` | `EnableSecretCache` com duração inválida; `VaultConfigurationOptions` fora da faixa (`ReloadInterval`, `LoadTimeout`...) |
 | `ArgumentException` | `UseKeyStore<T>` com tipo que não implementa `IKeyReader` nem `IKeyCryptography`; segredo inicial inválido no provedor em memória; `SectionSeparator` vazio |
 | `OperationCanceledException` | Cancelamento pedido pelo chamador em qualquer operação |
@@ -197,24 +197,24 @@ Erros de **configuração** são detectados na subida e lançam exceção (falha
 | Autenticação | HTTP 401 (após novo login), login recusado (4xx exceto 408/429; 408, 429 e 5xx no login mantêm `VAULT_INDISPONIVEL`/`VAULT_LIMITE_EXCEDIDO`), credencial ausente, ilegível ou acima de 64 KB → `VAULT_AUTENTICACAO_FALHOU` | — |
 | Limite | HTTP 429 → `VAULT_LIMITE_EXCEDIDO` | — |
 | Indisponível | HTTP 408/5xx, rede, tempo limite, 503 com `Retry-After` longo → `VAULT_INDISPONIVEL` | Pasta ou arquivo ausente, E/S → `VAULT_INDISPONIVEL` |
-| Listagem grande | HashiCorp e Infisical: acima de `MaxListItems` → `VAULT_LISTAGEM_ACIMA_DO_LIMITE` (conferido logo após listar os nomes, antes de ler metadados; vale também para listagens de versões e para a busca de nome sem diferenciar maiúsculas). Qualquer provedor HTTP: resposta acima de `MaxResponseBytes` → `VAULT_FALHA` (de propósito; log `resposta acima de MaxResponseBytes (N bytes)`) | Acima de `MaxItems` → `VAULT_FALHA` |
+| Listagem grande | HashiCorp e Infisical: acima de `MaxListItems` → `VAULT_LISTAGEM_ACIMA_DO_LIMITE` (conferido logo após listar os nomes, antes de ler metadados; vale também para listagens de versões e para a busca de nome sem diferenciar maiúsculas). Qualquer provedor HTTP: resposta acima de `MaxResponseBytes` → `VAULT_FALHA` (de propósito; log `resposta acima de MaxResponseBytes (N bytes)`) | Acima de `MaxItems` → `VAULT_LISTAGEM_ACIMA_DO_LIMITE` |
 | Sem suporte | HSM, emissão pelo PKI sem papel, escrita pendente de aprovação (Infisical) → `VAULT_OPERACAO_NAO_SUPORTADA` | — |
 | Formato inesperado | Resposta fora do formato ou acima do limite, item do KV sem o campo do valor → `VAULT_FALHA` | Arquivo acima do limite, UTF-8 inválido, JSON/.env inválido, nomes repetidos → `VAULT_FALHA` |
 
+O AWS Secrets Manager e o Google Secret Manager usam a mesma conversão dos provedores HTTP. No AWS, que responde quase todo erro com HTTP 400, o tipo do erro (`__type`) vira antes o status equivalente:
+
 | Origem | AWS Secrets Manager | Google Secret Manager |
 |---|---|---|
-| Validação de entrada | `VAULT_ENTRADA_INVALIDA` (regras comuns + limites do provedor; a versão informada precisa ter 32 hexadecimais) | `VAULT_ENTRADA_INVALIDA` (idem) |
-| Item inexistente | `ResourceNotFoundException` ou HTTP 404 → `VAULT_ITEM_NAO_ENCONTRADO` | HTTP 404 → `VAULT_ITEM_NAO_ENCONTRADO` (resposta sem `payload.data` também) |
-| Conflito | `ResourceExistsException` ou HTTP 409 → `VAULT_CONFLITO` | HTTP 409 → `VAULT_CONFLITO` |
-| Dados recusados | `InvalidRequestException`/`InvalidParameterException` → `VAULT_ENTRADA_INVALIDA` (campo `request`); segredo só binário → `VAULT_ENTRADA_INVALIDA` (campo `SecretString`) | HTTP 400 → `VAULT_ENTRADA_INVALIDA` (campo `request`) |
-| Permissão | `AccessDeniedException` ou HTTP 403 → `VAULT_ACESSO_NEGADO` | HTTP 403 → `VAULT_ACESSO_NEGADO` |
-| Autenticação | HTTP 401 → `VAULT_AUTENTICACAO_FALHOU` | HTTP 401 → `VAULT_AUTENTICACAO_FALHOU`; sem nenhuma credencial utilizável a exceção não é mapeada → `VAULT_FALHA` |
-| Limite | `ThrottlingException` ou HTTP 429 → `VAULT_LIMITE_EXCEDIDO` | HTTP 429 → `VAULT_LIMITE_EXCEDIDO` |
-| Indisponível | HTTP 502/503/504 e falha de rede (`HttpRequestException`) → `VAULT_INDISPONIVEL` | Idem |
-| Desconhecida | Demais status → `VAULT_FALHA` | Demais status → `VAULT_FALHA` |
-
-> [!NOTE]
-> No AWS e no Google, o estouro de `Http.NetworkTimeout` sai do `HttpClient` como `TaskCanceledException` (não como `TimeoutException`), que a conversão padrão não reconhece: o resultado é `VAULT_FALHA` com a pilha no log (evento 2005), e não `VAULT_INDISPONIVEL`. Veja as páginas dos provedores.
+| Validação de entrada | `VAULT_ENTRADA_INVALIDA` (regras comuns + limites do provedor; versão de 1 a 64 caracteres em `[0-9a-zA-Z_-]`; tags com versão; habilitar/desabilitar, validade e tipo de conteúdo) | `VAULT_ENTRADA_INVALIDA` (regras comuns + limites do provedor; versão `latest` ou só dígitos; labels fora das regras do Google; validade e tipo de conteúdo) |
+| Item inexistente | `ResourceNotFoundException` → `VAULT_ITEM_NAO_ENCONTRADO` | HTTP 404 → `VAULT_ITEM_NAO_ENCONTRADO` |
+| Conflito | `ResourceExistsException` → `VAULT_CONFLITO`; segredo agendado para exclusão em `UpdateSecretPropertiesAsync` → `VAULT_CONFLITO` | HTTP 409 → `VAULT_CONFLITO` |
+| Dados recusados | `InvalidRequestException`, `InvalidParameterException`, `LimitExceededException` e outros HTTP 400 → `VAULT_REQUISICAO_RECUSADA`; segredo só binário → `VAULT_ENTRADA_INVALIDA` (campo `SecretString`) | HTTP 400 (ex.: versão desabilitada) → `VAULT_REQUISICAO_RECUSADA` |
+| Permissão | `AccessDeniedException`, `NotAuthorized`, `DecryptionFailure`, `EncryptionFailure` → `VAULT_ACESSO_NEGADO` | HTTP 403 → `VAULT_ACESSO_NEGADO` |
+| Autenticação | `ExpiredTokenException`, `UnrecognizedClientException`, `InvalidSignatureException` e afins: credencial renovada e uma nova tentativa; persistindo, ou com o login recusado (STS, container, IMDS), `VAULT_AUTENTICACAO_FALHOU` | HTTP 401: token renovado e uma nova tentativa; persistindo, ou com o login recusado (Service Account, `token_uri` fora da lista, Metadata Server sem `Metadata-Flavor`), `VAULT_AUTENTICACAO_FALHOU` |
+| Limite | `ThrottlingException`, `TooManyRequestsException`, `RequestLimitExceeded`: repetidas como 429; persistindo, `VAULT_LIMITE_EXCEDIDO` | HTTP 429 → `VAULT_LIMITE_EXCEDIDO` |
+| Indisponível | HTTP 5xx, rede, tempo limite (também na leitura do corpo e no login) → `VAULT_INDISPONIVEL` | Idem |
+| Listagem grande | Acima de `MaxListItems` → `VAULT_LISTAGEM_ACIMA_DO_LIMITE` | Idem |
+| Formato inesperado | Resposta acima de `MaxResponseBytes` ou fora do formato → `VAULT_FALHA` | Idem, e Base64 inválido no valor |
 
 O [Provedor Encadeado](provedor-encadeado.md) não converte erros: devolve o `Result` do leitor que respondeu (`VAULT_ITEM_NAO_ENCONTRADO` passa para o próximo; qualquer outro código encerra a busca).
 

@@ -14,9 +14,14 @@ namespace TEC.Vault.Configuration;
 public sealed class VaultConfigurationOptions
 {
     /// <summary>
-    /// Carrega apenas segredos cujo nome começa com este prefixo (sem diferenciar maiúsculas), removendo-o da chave.
-    /// Recomendado: um prefixo por aplicação (ex.: "MinhaApi--"), para que cada aplicação só carregue o que é seu.
+    /// Prefixo dos segredos desta aplicação. <b>Obrigatório</b> (não vazio), conferido no <c>AddTecVault</c>: só os segredos cujo
+    /// nome começa com ele (sem diferenciar maiúsculas) viram configuração, sem o prefixo na chave. Ex.: com <c>"MinhaApi--"</c>, o
+    /// segredo <c>MinhaApi--ConnectionStrings--Db</c> vira <c>ConnectionStrings:Db</c>.
     /// </summary>
+    /// <remarks>
+    /// Sem prefixo, qualquer segredo do cofre viraria uma chave de configuração e poderia sobrescrever outra (ex.: um segredo
+    /// <c>Logging--LogLevel--Default</c> criado por outra aplicação). Use um prefixo por aplicação.
+    /// </remarks>
     public string? Prefix { get; set; }
 
     /// <summary>Separador de seções no nome do segredo. Padrão: "--" ("ConnectionStrings--Default" → "ConnectionStrings:Default").</summary>
@@ -91,6 +96,19 @@ public sealed class VaultConfigurationOptions
 
     /// <summary>A cada quantas recargas incrementais é feita uma releitura completa.</summary>
     public const int FullReloadEvery = 12;
+
+    /// <summary>Confere o prefixo obrigatório (na subida, antes de criar a fonte).</summary>
+    /// <param name="prefixPath">Nome da opção ou caminho da chave, para a mensagem.</param>
+    /// <exception cref="InvalidOperationException"><see cref="Prefix"/> ausente, vazio ou só com espaços.</exception>
+    internal void EnsurePrefix(string prefixPath)
+    {
+        if (string.IsNullOrWhiteSpace(Prefix))
+        {
+            throw new InvalidOperationException(
+                $"{prefixPath} é obrigatório na fonte de IConfiguration do cofre: informe o prefixo dos segredos desta aplicação " +
+                "(ex.: \"MinhaApi--\"). Sem ele, qualquer segredo do cofre viraria uma chave de configuração e poderia sobrescrever outra.");
+        }
+    }
 }
 
 /// <summary>
@@ -434,6 +452,7 @@ public static class VaultConfigurationBuilderExtensions
 {
     /// <summary>
     /// Adiciona os segredos do cofre à configuração (<c>IConfiguration</c>), com precedência sobre as fontes adicionadas antes.
+    /// <see cref="VaultConfigurationOptions.Prefix"/> é obrigatório.
     /// </summary>
     /// <remarks>
     /// Os valores ficam em memória no <c>IConfiguration</c> durante toda a vida da aplicação. Para segredos de alto valor,
@@ -448,6 +467,7 @@ public static class VaultConfigurationBuilderExtensions
     ///     loggerFactory: LoggerFactory.Create(l => l.AddConsole()));
     /// </code>
     /// </example>
+    /// <exception cref="InvalidOperationException"><see cref="VaultConfigurationOptions.Prefix"/> ausente ou vazio.</exception>
     public static IConfigurationBuilder AddTecVault(this IConfigurationBuilder builder, ISecretReader store,
         Action<VaultConfigurationOptions>? configure = null, TimeProvider? timeProvider = null, ILoggerFactory? loggerFactory = null)
     {
@@ -456,6 +476,7 @@ public static class VaultConfigurationBuilderExtensions
 
         var options = new VaultConfigurationOptions();
         configure?.Invoke(options);
+        options.EnsurePrefix("VaultConfigurationOptions.Prefix");
         return builder.Add(new VaultConfigurationSource(store, options, timeProvider ?? TimeProvider.System, loggerFactory));
     }
 }
@@ -466,7 +487,7 @@ public static class VaultConfigurationSelectionExtensions
     /// <summary>
     /// Adiciona os segredos do cofre à configuração, escolhendo o provedor pela seção <paramref name="vaultSection"/>
     /// (<c>Secrets:Provider</c> ou <c>Provider</c>, como em <c>IServiceCollection.AddTecVault(IConfiguration, ...)</c>). As opções da
-    /// fonte vêm de <c>Configuration</c> na mesma seção (<c>Prefix</c>, <c>SectionSeparator</c>, <c>ReloadInterval</c>,
+    /// fonte vêm de <c>Configuration</c> na mesma seção (<c>Prefix</c>, obrigatório, <c>SectionSeparator</c>, <c>ReloadInterval</c>,
     /// <c>Optional</c>, <c>MaxSecrets</c>, <c>LoadTimeout</c>, <c>MaxConcurrentReads</c>) e <paramref name="configure"/> roda depois delas.
     /// </summary>
     /// <remarks>
@@ -480,7 +501,10 @@ public static class VaultConfigurationSelectionExtensions
     ///     loggerFactory: LoggerFactory.Create(l => l.AddConsole()));
     /// </code>
     /// </example>
-    /// <exception cref="InvalidOperationException">Configuração inválida, nenhum provedor de segredos escolhido, ou provedor que não pode ser fonte de configuração.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// Configuração inválida, <c>Configuration:Prefix</c> ausente ou vazio, nenhum provedor de segredos escolhido, ou provedor que não
+    /// pode ser fonte de configuração.
+    /// </exception>
     public static IConfigurationBuilder AddTecVault(this IConfigurationBuilder builder, IConfiguration vaultSection,
         Action<DependencyInjection.VaultProviderCatalog> providers, Action<VaultConfigurationOptions>? configure = null,
         ILoggerFactory? loggerFactory = null)
@@ -498,7 +522,8 @@ public static class VaultConfigurationSelectionExtensions
         if (provider.CreateSecretReader is null)
             throw new InvalidOperationException($"O provedor '{provider.Name}' não pode ser usado como fonte de configuração.");
 
-        var options = ReadOptions(root.GetSection(DependencyInjection.VaultProviderSelection.ConfigurationKey));
+        var configurationSettings = root.GetSection(DependencyInjection.VaultProviderSelection.ConfigurationKey);
+        var options = ReadOptions(configurationSettings);
         configure?.Invoke(options);
 
         // Outras famílias e o cache só valem no container: aqui são aceitas sem validar o conteúdo
@@ -508,7 +533,17 @@ public static class VaultConfigurationSelectionExtensions
 
         var createSecretReader = provider.CreateSecretReader;
         var store = createSecretReader(root.GetSection(provider.Name), loggerFactory);
-        root.EnsureNoUnknownKeys();
+        try
+        {
+            // Chave digitada errado primeiro (ex.: "Prefx" explica o prefixo ausente), depois o prefixo obrigatório
+            root.EnsureNoUnknownKeys();
+            options.EnsurePrefix($"{configurationSettings.Path}:Prefix");
+        }
+        catch
+        {
+            (store as IDisposable)?.Dispose();
+            throw;
+        }
 
         // A fonte é dona do store (e dos que criar ao remontar): descartado com o provedor de configuração, não com o container
         var sourceOptions = new VaultConfigurationOptions();

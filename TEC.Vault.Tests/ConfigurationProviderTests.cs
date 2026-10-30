@@ -9,6 +9,14 @@ namespace TEC.Vault.Tests;
 /// <summary>Provedor de <c>IConfiguration</c>: log de falhas, tempo limite, recarga incremental e leituras com paralelismo limitado.</summary>
 public class ConfigurationProviderTests
 {
+    /// <summary>Prefixo obrigatório da fonte de configuração (os segredos dos testes começam com ele).</summary>
+    private const string Prefix = "App--";
+
+    private static Action<VaultConfigurationOptions> With(Action<VaultConfigurationOptions>? configure = null) => o =>
+    {
+        o.Prefix = Prefix;
+        configure?.Invoke(o);
+    };
     [Test]
     public async Task Initial_load_failure_is_logged_as_Error_with_code()
     {
@@ -16,7 +24,7 @@ public class ConfigurationProviderTests
         using var factory = LoggerFactory.Create(b => b.AddProvider(logs));
         var store = new ScriptedSecretStore(Memory.Secrets()) { ListFailure = VaultErrors.AccessDenied() };
 
-        var exception = await Assert.That(() => new ConfigurationBuilder().AddTecVault(store, loggerFactory: factory).Build())
+        var exception = await Assert.That(() => new ConfigurationBuilder().AddTecVault(store, With(), loggerFactory: factory).Build())
             .Throws<InvalidOperationException>();
 
         await Assert.That(exception!.Message).Contains(VaultErrors.AccessDeniedCode);
@@ -30,9 +38,9 @@ public class ConfigurationProviderTests
         using var factory = LoggerFactory.Create(b => b.AddProvider(logs));
         var store = Memory.Secrets();
         for (int i = 0; i < 3; i++)
-            await store.SetSecretAsync($"s{i}", "v");
+            await store.SetSecretAsync($"{Prefix}s{i}", "v");
 
-        await Assert.That(() => new ConfigurationBuilder().AddTecVault(store, o => o.MaxSecrets = 2, loggerFactory: factory).Build())
+        await Assert.That(() => new ConfigurationBuilder().AddTecVault(store, With(o => o.MaxSecrets = 2), loggerFactory: factory).Build())
             .Throws<InvalidOperationException>();
 
         await Assert.That(logs.Entries.Any(e => e.Level == LogLevel.Error && e.Text.Contains("MaxSecrets") && e.Text.Contains('3'))).IsTrue();
@@ -47,7 +55,7 @@ public class ConfigurationProviderTests
 
         var started = TimeProvider.System.GetTimestamp();
         await Assert.That(() => new ConfigurationBuilder()
-                .AddTecVault(store, o => o.LoadTimeout = TimeSpan.FromMilliseconds(200), loggerFactory: factory).Build())
+                .AddTecVault(store, With(o => o.LoadTimeout = TimeSpan.FromMilliseconds(200)), loggerFactory: factory).Build())
             .Throws<InvalidOperationException>();
 
         await Assert.That(TimeProvider.System.GetElapsedTime(started)).IsLessThan(TimeSpan.FromSeconds(10));
@@ -65,7 +73,7 @@ public class ConfigurationProviderTests
 
         var started = TimeProvider.System.GetTimestamp();
         await Assert.That(() => new ConfigurationBuilder()
-                .AddTecVault(store, o => o.LoadTimeout = TimeSpan.FromMilliseconds(200), loggerFactory: factory).Build())
+                .AddTecVault(store, With(o => o.LoadTimeout = TimeSpan.FromMilliseconds(200)), loggerFactory: factory).Build())
             .Throws<InvalidOperationException>();
 
         await Assert.That(TimeProvider.System.GetElapsedTime(started)).IsLessThan(TimeSpan.FromSeconds(10));
@@ -79,7 +87,7 @@ public class ConfigurationProviderTests
         var store = new ScriptedSecretStore(Memory.Secrets()) { BeforeList = ct => Task.Delay(Timeout.Infinite, ct) };
 
         var configuration = new ConfigurationBuilder()
-            .AddTecVault(store, o => { o.LoadTimeout = TimeSpan.FromMilliseconds(100); o.Optional = true; }).Build();
+            .AddTecVault(store, With(o => { o.LoadTimeout = TimeSpan.FromMilliseconds(100); o.Optional = true; })).Build();
 
         await Assert.That(configuration.AsEnumerable()).IsEmpty();
     }
@@ -88,14 +96,14 @@ public class ConfigurationProviderTests
     public async Task Incremental_reload_rereads_only_changed_secrets()
     {
         var memory = new ScriptedSecretStore(Memory.Secrets());
-        await memory.SetSecretAsync("A", "1");
-        await memory.SetSecretAsync("B", "1");
-        await memory.SetSecretAsync("C", "1");
-        var configuration = new ConfigurationBuilder().AddTecVault(memory).Build();
+        await memory.SetSecretAsync(Prefix + "A", "1");
+        await memory.SetSecretAsync(Prefix + "B", "1");
+        await memory.SetSecretAsync(Prefix + "C", "1");
+        var configuration = new ConfigurationBuilder().AddTecVault(memory, With()).Build();
         var provider = (VaultConfigurationProvider)configuration.Providers.Single();
         await Assert.That(memory.GetCalls).IsEqualTo(3);
 
-        await memory.SetSecretAsync("B", "2");
+        await memory.SetSecretAsync(Prefix + "B", "2");
         await provider.ReloadAsync();
 
         await Assert.That(memory.GetCalls).IsEqualTo(4);
@@ -110,8 +118,8 @@ public class ConfigurationProviderTests
     public async Task Periodic_full_reload_rereads_all()
     {
         var memory = new ScriptedSecretStore(Memory.Secrets());
-        await memory.SetSecretAsync("A", "1");
-        var configuration = new ConfigurationBuilder().AddTecVault(memory).Build();
+        await memory.SetSecretAsync(Prefix + "A", "1");
+        var configuration = new ConfigurationBuilder().AddTecVault(memory, With()).Build();
         var provider = (VaultConfigurationProvider)configuration.Providers.Single();
 
         for (int i = 0; i < VaultConfigurationOptions.FullReloadEvery; i++)
@@ -125,12 +133,12 @@ public class ConfigurationProviderTests
     public async Task Removed_secret_disappears_from_configuration_on_reload()
     {
         var memory = new ScriptedSecretStore(Memory.Secrets());
-        await memory.SetSecretAsync("A", "1");
-        await memory.SetSecretAsync("B", "1");
-        var configuration = new ConfigurationBuilder().AddTecVault(memory).Build();
+        await memory.SetSecretAsync(Prefix + "A", "1");
+        await memory.SetSecretAsync(Prefix + "B", "1");
+        var configuration = new ConfigurationBuilder().AddTecVault(memory, With()).Build();
         var provider = (VaultConfigurationProvider)configuration.Providers.Single();
 
-        await memory.DeleteSecretAsync("B");
+        await memory.DeleteSecretAsync(Prefix + "B");
         await provider.ReloadAsync();
 
         await Assert.That(configuration["A"]).IsEqualTo("1");
@@ -143,9 +151,9 @@ public class ConfigurationProviderTests
         var logs = new CapturingLoggerProvider();
         using var factory = LoggerFactory.Create(b => b.AddProvider(logs));
         var memory = new ScriptedSecretStore(Memory.Secrets());
-        await memory.SetSecretAsync("A", "1");
+        await memory.SetSecretAsync(Prefix + "A", "1");
         var store = new ScriptedSecretStore(memory);
-        var configuration = new ConfigurationBuilder().AddTecVault(store, loggerFactory: factory).Build();
+        var configuration = new ConfigurationBuilder().AddTecVault(store, With(), loggerFactory: factory).Build();
         var provider = (VaultConfigurationProvider)configuration.Providers.Single();
 
         store.ListFailure = VaultErrors.Unavailable();
@@ -161,9 +169,9 @@ public class ConfigurationProviderTests
         var logs = new CapturingLoggerProvider();
         using var factory = LoggerFactory.Create(b => b.AddProvider(logs));
         var memory = new ScriptedSecretStore(Memory.Secrets());
-        await memory.SetSecretAsync("A", "1");
+        await memory.SetSecretAsync(Prefix + "A", "1");
         var store = new ScriptedSecretStore(memory);
-        var configuration = new ConfigurationBuilder().AddTecVault(store, o => o.Optional = true, loggerFactory: factory).Build();
+        var configuration = new ConfigurationBuilder().AddTecVault(store, With(o => o.Optional = true), loggerFactory: factory).Build();
         await Assert.That(configuration["A"]).IsEqualTo("1");
 
         store.ListFailure = VaultErrors.Unavailable();
@@ -174,7 +182,7 @@ public class ConfigurationProviderTests
         await Assert.That(logs.Entries.Any(e => e.Level == LogLevel.Warning && e.Text.Contains("falha na recarga") && e.Text.Contains(VaultErrors.UnavailableCode))).IsTrue();
 
         store.ListFailure = null;
-        await memory.SetSecretAsync("A", "2");
+        await memory.SetSecretAsync(Prefix + "A", "2");
         configuration.Reload();                       // cofre de volta: a carga volta a valer
 
         await Assert.That(configuration["A"]).IsEqualTo("2");
@@ -184,9 +192,9 @@ public class ConfigurationProviderTests
     public async Task Reload_without_Optional_and_vault_down_throws_and_keeps_values()
     {
         var memory = new ScriptedSecretStore(Memory.Secrets());
-        await memory.SetSecretAsync("A", "1");
+        await memory.SetSecretAsync(Prefix + "A", "1");
         var store = new ScriptedSecretStore(memory);
-        var configuration = new ConfigurationBuilder().AddTecVault(store).Build();
+        var configuration = new ConfigurationBuilder().AddTecVault(store, With()).Build();
 
         store.ListFailure = VaultErrors.Unavailable();
 
@@ -199,7 +207,7 @@ public class ConfigurationProviderTests
     {
         var memory = new ScriptedSecretStore(Memory.Secrets());
         for (int i = 0; i < 12; i++)
-            await memory.SetSecretAsync($"S{i}", "v");
+            await memory.SetSecretAsync($"{Prefix}S{i}", "v");
         int current = 0, max = 0;
         var store = new ScriptedSecretStore(memory)
         {
@@ -216,7 +224,7 @@ public class ConfigurationProviderTests
             }
         };
 
-        var configuration = new ConfigurationBuilder().AddTecVault(store, o => o.MaxConcurrentReads = 2).Build();
+        var configuration = new ConfigurationBuilder().AddTecVault(store, With(o => o.MaxConcurrentReads = 2)).Build();
 
         await Assert.That(configuration.AsEnumerable().Count()).IsEqualTo(12);
         await Assert.That(max).IsLessThanOrEqualTo(2);
@@ -228,10 +236,10 @@ public class ConfigurationProviderTests
     {
         var memory = new ScriptedSecretStore(Memory.Secrets());
         for (int i = 0; i < 6; i++)
-            await memory.SetSecretAsync($"S{i}", "v");
-        var store = new ScriptedSecretStore(memory) { GetFailure = name => name == "S3" ? VaultErrors.Throttled() : null };
+            await memory.SetSecretAsync($"{Prefix}S{i}", "v");
+        var store = new ScriptedSecretStore(memory) { GetFailure = name => name == Prefix + "S3" ? VaultErrors.Throttled() : null };
 
-        var exception = await Assert.That(() => new ConfigurationBuilder().AddTecVault(store).Build()).Throws<InvalidOperationException>();
+        var exception = await Assert.That(() => new ConfigurationBuilder().AddTecVault(store, With()).Build()).Throws<InvalidOperationException>();
 
         await Assert.That(exception!.Message).Contains(VaultErrors.ThrottledCode);
     }
@@ -252,7 +260,7 @@ public class ConfigurationProviderTests
     public async Task Stale_reload_finishing_after_Reload_does_not_overwrite_new_values()
     {
         var memory = Memory.Secrets();
-        await memory.SetSecretAsync("A", "1");
+        await memory.SetSecretAsync(Prefix + "A", "1");
         int hold = 0;
         var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -268,17 +276,17 @@ public class ConfigurationProviderTests
                 }
             }
         };
-        var configuration = new ConfigurationBuilder().AddTecVault(store).Build();
+        var configuration = new ConfigurationBuilder().AddTecVault(store, With()).Build();
         var provider = (VaultConfigurationProvider)configuration.Providers.Single();
         int changes = 0;
         using var subscription = Microsoft.Extensions.Primitives.ChangeToken.OnChange(configuration.GetReloadToken, () => Interlocked.Increment(ref changes));
 
-        await memory.SetSecretAsync("A", "2");
+        await memory.SetSecretAsync(Prefix + "A", "2");
         Volatile.Write(ref hold, 1);
         var timerReload = provider.ReloadAsync();          // começa antes: lê "2" e fica parada
         await reached.Task;
 
-        await memory.SetSecretAsync("A", "3");
+        await memory.SetSecretAsync(Prefix + "A", "3");
         configuration.Reload();                             // começa depois e termina antes: aplica "3"
         await Assert.That(configuration["A"]).IsEqualTo("3");
         int changesAfterReload = Volatile.Read(ref changes);
@@ -298,7 +306,7 @@ public class ConfigurationProviderTests
     public async Task Stale_Reload_finishing_after_timer_reload_does_not_overwrite_new_values()
     {
         var memory = Memory.Secrets();
-        await memory.SetSecretAsync("A", "1");
+        await memory.SetSecretAsync(Prefix + "A", "1");
         int hold = 0;
         var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -313,15 +321,15 @@ public class ConfigurationProviderTests
                 }
             }
         };
-        var configuration = new ConfigurationBuilder().AddTecVault(store).Build();
+        var configuration = new ConfigurationBuilder().AddTecVault(store, With()).Build();
         var provider = (VaultConfigurationProvider)configuration.Providers.Single();
 
-        await memory.SetSecretAsync("A", "2");
+        await memory.SetSecretAsync(Prefix + "A", "2");
         Volatile.Write(ref hold, 1);
         var manualReload = Task.Run(configuration.Reload);  // Load() manual começa antes: lê "2" e fica parado
         await reached.Task;
 
-        await memory.SetSecretAsync("A", "3");
+        await memory.SetSecretAsync(Prefix + "A", "3");
         await provider.ReloadAsync();                       // recarga do timer começa depois e aplica "3"
         await Assert.That(configuration["A"]).IsEqualTo("3");
 
@@ -339,11 +347,11 @@ public class ConfigurationProviderTests
         var logs = new CapturingLoggerProvider();
         using var factory = LoggerFactory.Create(b => b.AddProvider(logs));
         var memory = Memory.Secrets();
-        await memory.SetSecretAsync("A", "1");
+        await memory.SetSecretAsync(Prefix + "A", "1");
         var store = new ScriptedSecretStore(memory) { ThrowOnGet = new InvalidOperationException("provedor quebrado") };
 
         var configuration = new ConfigurationBuilder()
-            .AddTecVault(store, o => { o.Optional = true; o.ReloadInterval = TimeSpan.FromMinutes(1); }, loggerFactory: factory).Build();
+            .AddTecVault(store, With(o => { o.Optional = true; o.ReloadInterval = TimeSpan.FromMinutes(1); }), loggerFactory: factory).Build();
         var provider = (VaultConfigurationProvider)configuration.Providers.Single();
 
         await Assert.That(configuration.AsEnumerable()).IsEmpty();
@@ -362,7 +370,7 @@ public class ConfigurationProviderTests
     {
         var store = new ScriptedSecretStore(Memory.Secrets()) { BeforeList = _ => Task.FromException(new HttpRequestException("rede")) };
 
-        var configuration = new ConfigurationBuilder().AddTecVault(store, o => o.Optional = true).Build();
+        var configuration = new ConfigurationBuilder().AddTecVault(store, With(o => o.Optional = true)).Build();
 
         await Assert.That(configuration.AsEnumerable()).IsEmpty();
     }
@@ -374,7 +382,7 @@ public class ConfigurationProviderTests
         using var factory = LoggerFactory.Create(b => b.AddProvider(logs));
         var store = new ScriptedSecretStore(Memory.Secrets()) { BeforeList = _ => Task.FromException(new HttpRequestException("rede")) };
 
-        await Assert.That(() => new ConfigurationBuilder().AddTecVault(store, loggerFactory: factory).Build()).Throws<HttpRequestException>();
+        await Assert.That(() => new ConfigurationBuilder().AddTecVault(store, With(), loggerFactory: factory).Build()).Throws<HttpRequestException>();
         await Assert.That(logs.Entries.Any(e => e.Level == LogLevel.Error && e.Text.Contains(nameof(HttpRequestException)))).IsTrue();
     }
 
@@ -384,10 +392,10 @@ public class ConfigurationProviderTests
     public async Task Configuration_dispose_stops_reload_timer()
     {
         var memory = Memory.Secrets();
-        await memory.SetSecretAsync("A", "1");
+        await memory.SetSecretAsync(Prefix + "A", "1");
         var time = new TimerCaptureTimeProvider();
         var configuration = new ConfigurationBuilder()
-            .AddTecVault(memory, o => o.ReloadInterval = TimeSpan.FromMinutes(5), timeProvider: time).Build();
+            .AddTecVault(memory, With(o => o.ReloadInterval = TimeSpan.FromMinutes(5)), timeProvider: time).Build();
 
         // O tempo limite da carga (CancellationTokenSource com o TimeProvider) também cria um timer, sem período
         var reload = time.Timers.Single(t => t.Period != Timeout.InfiniteTimeSpan);
@@ -403,7 +411,7 @@ public class ConfigurationProviderTests
     public async Task Without_ReloadInterval_no_timer_is_created()
     {
         var time = new TimerCaptureTimeProvider();
-        using var _ = (IDisposable)new ConfigurationBuilder().AddTecVault(Memory.Secrets(), timeProvider: time).Build();
+        using var _ = (IDisposable)new ConfigurationBuilder().AddTecVault(Memory.Secrets(), With(), timeProvider: time).Build();
 
         await Assert.That(time.Timers.Where(t => t.Period != Timeout.InfiniteTimeSpan)).IsEmpty();
     }

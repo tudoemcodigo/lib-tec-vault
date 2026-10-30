@@ -18,10 +18,12 @@ Implementar um decorador de cache especializado (`CachingSecretReader`) acionado
    - Utilização do padrão SingleFlight para garantir que, sob concorrência intensa na mesma chave, **apenas uma única chamada real** seja despachada contra o cofre remoto.
    - Todas as demais requisições concorrentes aguardam o término dessa mesma tarefa em execução e compartilham o resultado obtido.
 2. **Invalidação Proativa nas Mutações**:
-   - Operações de escrita (`SetSecretAsync`), rotação (`RotateSecretAsync`) ou exclusão (`DeleteSecretAsync`) invalidam imediatamente a entrada correspondente no cache em memória.
+   - Escritas pelas interfaces (`SetSecretAsync`, `UpdateSecretPropertiesAsync`, `DeleteSecretAsync`, recuperação, remoção definitiva e restauração de backup; a rotação passa por `SetSecretAsync`) limpam **todo** o cache e mudam um contador de geração. Uma leitura que estava em andamento durante a escrita não grava seu valor. Limpar tudo evita depender da comparação de nomes, que varia entre provedores.
 3. **Isolamento de Segurança**:
-   - O cache em memória opera com TTL configurável (`Vault:Cache:Duration`).
+   - O cache em memória é desligado por padrão e opera com TTL configurável (`Vault:Cache:Duration`, maior que zero e até 1 hora, nunca além do `ExpiresOn` do segredo) e no máximo 1.024 entradas.
    - Cópias em cache são encapsuladas e mascaradas em representações textuais para evitar vazamento acidental em depuradores ou dumps.
+4. **Teto da leitura compartilhada** (revisão de 2026-10-29): a chamada compartilhada não usa o `CancellationToken` de nenhum chamador, mas tem teto próprio de 2 minutos. Passou dele, quem aguarda recebe `VAULT_INDISPONIVEL` e a próxima leitura consulta o cofre de novo; antes, um provedor que nunca respondesse prendia a chave para sempre.
+5. **Chave conforme o provedor** (revisão de 2026-10-29): o nome na chave segue `VaultProviderBase.NameComparer`. Num cofre que não diferencia maiúsculas, grafias diferentes ocupam uma entrada só; nos demais (e em leitores que não derivam da base), continuam separadas, porque juntar nomes que o cofre trata como diferentes serviria um segredo no lugar de outro.
 
 ## Consequências
 ### Positivas
@@ -30,4 +32,4 @@ Implementar um decorador de cache especializado (`CachingSecretReader`) acionado
 - Proteção absoluta contra travamentos por *Cache Stampede*.
 
 ### Neutras / Negativas
-- Em arquiteturas com múltiplas réplicas da aplicação, a mutação feita em uma réplica invalida o cache apenas daquela réplica local; as demais réplicas aguardam o vencimento do TTL configurado (por padrão curto, como 1 minuto) a menos que o `IConfiguration` recarregue via webhook/polling.
+- Em arquiteturas com múltiplas réplicas da aplicação, a mutação feita em uma réplica invalida o cache apenas daquela réplica local; as demais réplicas aguardam o vencimento do TTL configurado (recomendado até 5 minutos). Uma escrita pela classe concreta do provedor, que continua registrada no container, também não limpa o cache.

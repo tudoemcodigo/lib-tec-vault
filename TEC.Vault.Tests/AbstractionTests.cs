@@ -270,7 +270,7 @@ public class AbstractionTests
     {
         var reader = new ManagedListingReader();
 
-        var configuration = new ConfigurationBuilder().AddTecVault(reader).Build();
+        var configuration = new ConfigurationBuilder().AddTecVault(reader, o => o.Prefix = "App--").Build();
 
         await Assert.That(configuration["comum"]).IsEqualTo("valor");
         await Assert.That(configuration["cert-api"]).IsNull();
@@ -281,11 +281,11 @@ public class AbstractionTests
     {
         var store = Memory.Secrets();
         for (int i = 0; i < 3; i++)
-            await store.SetSecretAsync($"s{i}", "v");
+            await store.SetSecretAsync($"App--s{i}", "v");
 
-        await Assert.That(() => new ConfigurationBuilder().AddTecVault(store, o => o.MaxSecrets = 2).Build())
+        await Assert.That(() => new ConfigurationBuilder().AddTecVault(store, o => { o.Prefix = "App--"; o.MaxSecrets = 2; }).Build())
             .Throws<InvalidOperationException>();
-        await Assert.That(new ConfigurationBuilder().AddTecVault(store, o => { o.MaxSecrets = 2; o.Optional = true; }).Build().AsEnumerable())
+        await Assert.That(new ConfigurationBuilder().AddTecVault(store, o => { o.Prefix = "App--"; o.MaxSecrets = 2; o.Optional = true; }).Build().AsEnumerable())
             .IsEmpty();
     }
 
@@ -293,11 +293,11 @@ public class AbstractionTests
     public async Task Configuration_reloads_rotated_values()
     {
         var store = Memory.Secrets();
-        await store.SetSecretAsync("Senha", "v1");
-        var configuration = new ConfigurationBuilder().AddTecVault(store).Build();
+        await store.SetSecretAsync("App--Senha", "v1");
+        var configuration = new ConfigurationBuilder().AddTecVault(store, o => o.Prefix = "App--").Build();
         var provider = (VaultConfigurationProvider)configuration.Providers.Single();
 
-        await store.SetSecretAsync("Senha", "v2");
+        await store.SetSecretAsync("App--Senha", "v2");
         await provider.ReloadAsync();
 
         await Assert.That(configuration["Senha"]).IsEqualTo("v2");
@@ -429,8 +429,8 @@ public class AbstractionTests
         public Task<Result<IReadOnlyList<SecretProperties>>> ListSecretsAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<Result<IReadOnlyList<SecretProperties>>>(new SecretProperties[]
             {
-                new() { Name = "comum", Enabled = true },
-                new() { Name = "cert-api", Enabled = true, ManagedBy = "certificate" }
+                new() { Name = "App--comum", Enabled = true },
+                new() { Name = "App--cert-api", Enabled = true, ManagedBy = "certificate" }
             });
 
         public Task<Result<VaultSecret>> GetSecretAsync(string name, string? version = null, CancellationToken cancellationToken = default) =>

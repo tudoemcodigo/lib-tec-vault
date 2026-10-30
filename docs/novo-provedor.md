@@ -23,7 +23,7 @@
 
 ## 🎯 Visão geral
 
-Tudo o que um provedor precisa fica no pacote `TEC.Vault`, nos namespaces `TEC.Vault.Providers` (base, regras, certificados, ambiente) e `TEC.Vault.Providers.Http` (base para cofres acessados por HTTP sem SDK, usada pelo HashiCorp Vault e pelo Infisical; o AWS Secrets Manager e o Google Secret Manager derivam de `VaultHttpProviderBase`, mas usam um `HttpClient` próprio em vez de `VaultHttpClient`).
+Tudo o que um provedor precisa fica no pacote `TEC.Vault`, nos namespaces `TEC.Vault.Providers` (base, regras, certificados, ambiente) e `TEC.Vault.Providers.Http` (base para cofres acessados por HTTP sem SDK, usada pelo HashiCorp Vault, pelo Infisical, pelo AWS Secrets Manager e pelo Google Secret Manager).
 
 ```mermaid
 flowchart LR
@@ -78,7 +78,7 @@ flowchart TD
 
 ### Passo a passo
 
-1. **Pacote:** crie `TEC.Vault.<Provedor>` referenciando só `TEC.Vault` + o SDK do cofre (ou nenhum SDK, com a [base HTTP](#provedor-http-sem-sdk)). Alvos `net8.0;net10.0`, AOT, metadados e avisos como erro vêm do `build/Tec.Build.props`; no csproj ficam só `Description` e `PackageTags`, e um `README.md` próprio na pasta do projeto.
+1. **Pacote:** crie `TEC.Vault.<Provedor>` referenciando só `TEC.Vault` + o SDK do cofre (ou nenhum SDK, com a [base HTTP](#provedor-http-sem-sdk)). Alvo `net10.0`, AOT, metadados e avisos como erro vêm do `build/Tec.Build.props`; no csproj ficam só `Description` e `PackageTags`, e um `README.md` próprio na pasta do projeto.
 2. **Interfaces:** implemente só o que o cofre oferece de verdade. Todo provedor de segredos implementa `ISecretReader`; `ISecretStore` se aceita escrita; `ISecretRecycleBin`/`ISecretBackup` **só** se houver lixeira/backup (a ausência da interface já informa a aplicação na resolução do DI). Chaves: `IKeyReader`/`IKeyStore` para gestão e `IKeyCryptography` para uso. Referências:
    - **HashiCorp Vault** → KV v2: `ISecretStore` + `ISecretRecycleBin`; Transit: `IKeyStore` + `IKeyCryptography` (sem lixeira e sem backup);
    - **Infisical**, **AWS Secrets Manager** e **Google Secret Manager** → `ISecretStore`, sem lixeira e sem backup;
@@ -461,6 +461,7 @@ Os provedores existentes herdam assim (AWS e Google têm só testes de unidade, 
 |---|---|---|
 | `VaultProviderBase(string providerName, ILogger logger, VaultCircuitBreaker? circuitBreaker = null)` *(protected)* | — | Nome do provedor (ex.: `"AzureKeyVault"`), logger e circuit breaker do cofre (`null` = sem circuit breaker, p.ex. provedores locais); vazio/nulo → `ArgumentException`/`ArgumentNullException` |
 | `ProviderName` | `string` | Nome do provedor |
+| `NameComparer` *(virtual)* | `StringComparer` | Como o cofre compara nomes. Padrão `Ordinal`; devolva `OrdinalIgnoreCase` só se nomes que diferem em maiúsculas forem **sempre** o mesmo item (Azure Key Vault, em memória, variáveis e arquivo do Synced). O cache de segredos usa a mesma regra na chave. Na dúvida, mantenha `Ordinal`: com "nome exato primeiro" (HashiCorp, Infisical, pasta do Synced) ignorar maiúsculas serviria um segredo no lugar de outro |
 | `MapException(Exception exception)` *(protected abstract)* | `VaultFailure?` | Converte uma exceção do SDK; `null` = desconhecida (vira `VAULT_FALHA` com pilha no log) |
 | `ExecuteAsync<T>(string operation, string? itemName, Error? inputError, bool isWrite, Func<CancellationToken, Task<Result<T>>> action, CancellationToken cancellationToken)` *(protected)* | `Task<Result<T>>` | Executa uma operação com retorno |
 | `ExecuteAsync(string operation, string? itemName, Error? inputError, bool isWrite, Func<CancellationToken, Task> action, CancellationToken cancellationToken)` *(protected)* | `Task<Result>` | Executa uma operação sem retorno |
@@ -513,7 +514,7 @@ Limites do cofre e validações de cada operação, iguais em todos os provedore
 |---|---|---|
 | `VaultCertificateLoader.SafeKeyStorageFlags` | `X509KeyStorageFlags` | `EphemeralKeySet` no Windows e no Linux; `DefaultKeySet` no macOS |
 | `VaultCertificateLoader.LoadCertificate(byte[] data)` | `X509Certificate2` | Certificado sem chave (DER ou PEM); recusa PFX e PKCS#7 |
-| `VaultCertificateLoader.LoadPkcs12(byte[] data, string? password, X509KeyStorageFlags? keyStorageFlags = null)` | `X509Certificate2` | PKCS#12 com chave privada; no .NET 9+ usa `X509CertificateLoader` (limites contra PFX malicioso), no .NET 8 o construtor depois de conferir o tipo |
+| `VaultCertificateLoader.LoadPkcs12(byte[] data, string? password, X509KeyStorageFlags? keyStorageFlags = null)` | `X509Certificate2` | PKCS#12 com chave privada, carregado com `X509CertificateLoader` (limites contra PFX malicioso) |
 | `VaultCertificateFactory.CreateRequest(CreateCertificateOptions options)` | `(CertificateRequest Request, AsymmetricAlgorithm Key)` | Par de chaves e CSR com subject, SAN, key usage e basic constraints; o chamador descarta a chave. As opções devem ter passado por `VaultCertificateRules.Create` |
 | `VaultCertificateFactory.CreateSelfSigned(CreateCertificateOptions options, DateTimeOffset now)` | `X509Certificate2` | Autoassinado com chave privada, válido de 5 minutos antes de `now` até a validade pedida |
 | `VaultCertificateFactory.WithPrivateKey(X509Certificate2 issued, AsymmetricAlgorithm key)` | `X509Certificate2` | Junta o certificado emitido por uma CA à chave de `CreateRequest`; `CryptographicException` se não corresponderem |
@@ -573,10 +574,11 @@ using (key)
 | `VaultHttpClient(Uri baseAddress, VaultHttpSettings settings, VaultTokenSource? tokens = null, Action<HttpRequestMessage, string>? applyToken = null, bool reauthenticateOnForbidden = false)` | — | `baseAddress` já validado por `VaultEndpoint`; sem `tokens`, requisições sem autenticação (ex.: o próprio login); `applyToken` padrão = `Authorization: Bearer`; `reauthenticateOnForbidden` refaz o login também em 403 |
 | `VaultHttpClient(baseAddress, settings, tokens, applyToken, bool reauthenticateOnForbidden, Func<string, CancellationToken, Task<bool>>? isTokenRejected)` | — | Em 403, `isTokenRejected` confirma com o cofre se o token é o problema (`true` = refaz o login; `false` = o 403 é de política e é devolvido como está). Um `false` vale por `ForbiddenConfirmationCacheDuration` (5 s) para o mesmo token. É o que o HashiCorp Vault usa (`auth/token/lookup-self`) |
 | `BaseAddress` | `Uri` | Endereço do cofre |
+| `ErrorStatusMapper` *(init)* | `Func<HttpStatusCode, ReadOnlyMemory<byte>, HttpStatusCode>?` | Para cofres que informam o tipo do erro no corpo e não no status (AWS: HTTP 400 com `__type`). Recebe cada resposta 4xx com o corpo já lido (com teto e tempo limite) e devolve o status equivalente (ex.: 429, 401), que vale para retentativa, novo login e conversão; o corpo continua legível |
 | `SendAsync(Func<HttpRequestMessage> createRequest, bool idempotent, CancellationToken)` | `Task<HttpResponseMessage>` | Envia (a requisição é recriada a cada tentativa) e devolve a resposta em qualquer status; o chamador descarta |
 | `EnsureSuccess(HttpResponseMessage response, string? detail = null)` *(static)* | `void` | Lança `VaultHttpException` (e descarta a resposta) se não for sucesso |
 | `ReadJsonAsync<T>(response, JsonTypeInfo<T> typeInfo, ct)` | `Task<T>` | JSON por *source generator* (AOT), respeitando `MaxResponseBytes`; o buffer é zerado depois |
-| `ReadBytesAsync(response, ct)` | `Task<byte[]>` | Corpo respeitando `MaxResponseBytes` (acima → `VaultResponseTooLargeException`) |
+| `ReadBytesAsync(response, ct)` | `Task<byte[]>` | Corpo respeitando `MaxResponseBytes` (acima → `VaultResponseTooLargeException`) e `NetworkTimeout`, contado do início da leitura (corpo que não chega → `TimeoutException`) |
 
 | Situação | Comportamento |
 |---|---|
@@ -586,7 +588,7 @@ using (key)
 | Operação não idempotente (criação, rotação, emissão) | **Nunca** repetida após falha de rede, tempo limite ou 5xx: uma criação nunca é aplicada duas vezes |
 | 401 com token (e 403, com `reauthenticateOnForbidden: true`) | Token invalidado e novo login, **uma vez** por chamada (não conta como tentativa) |
 | Redirecionamento | Não seguido |
-| Tempo limite da última tentativa | `TimeoutException` |
+| Tempo limite da última tentativa, ou corpo que não chega inteiro dentro de `NetworkTimeout` | `TimeoutException` (vira `VAULT_INDISPONIVEL`) |
 | Cancelamento do chamador | `OperationCanceledException` |
 
 **Conexões:** sem `Handler` próprio, cada cliente usa um `SocketsHttpHandler` de vida longa (`AllowAutoRedirect = false`, sem descompressão automática) com `PooledConnectionLifetime` de 5 minutos: as conexões são renovadas e acompanham mudança de DNS, sem `IHttpClientFactory` (compatível com Native AOT e sem dependência extra). O handler é descartado junto com o cliente.
@@ -627,13 +629,14 @@ Só `VAULT_INDISPONIVEL` e `VAULT_LIMITE_EXCEDIDO` contam como falha. Na meia-ab
 
 | Membro | Retorno | Descrição |
 |---|---|---|
-| `VaultTokenSource(Func<CancellationToken, Task<VaultToken>> login, TimeProvider? timeProvider = null)` | — | `login` faz o login (relendo a credencial a cada chamada) |
+| `VaultTokenSource(Func<CancellationToken, Task<VaultToken>> login, TimeProvider? timeProvider = null, TimeSpan? loginTimeout = null)` | — | `login` faz o login (relendo a credencial a cada chamada); `loginTimeout` é o teto de um login (1 s a 30 min; padrão `DefaultLoginTimeout`, 2 min) |
 | `GetAsync(CancellationToken)` | `ValueTask<string>` | Token do cache ou de um novo login |
 | `Invalidate(string token)` | `void` | Descarta o token (ex.: 401/403); se outra chamada já o trocou, não faz nada |
 
 - **Renovação antecipada:** faltando 10% da vida do token (entre 10 segundos e 5 minutos antes de `ExpiresOn`, e nunca mais que metade da vida, para um token de vida curta não nascer vencido).
 - **Login único:** várias chamadas simultâneas com o token vencido fazem um só login.
 - **Falha guardada por 2 s:** o desfecho de um login que falha vale para as chamadas simultâneas e para as seguintes durante `VaultTokenSource.FailureCooldown` (2 s), sem novo login; cancelamento não é guardado; token vazio → `VaultLoginException`.
+- **Teto do login:** um login que passa de `loginTimeout` (mesmo um que ignore o `CancellationToken`) vira `TimeoutException` para todas as chamadas que o aguardam e é guardado como falha; sem o teto, um login travado prenderia o token para sempre.
 
 `VaultToken(string Value, DateTimeOffset? ExpiresOn)` (`sealed record`): `ExpiresOn = null` = sem expiração conhecida (renovado só quando o cofre recusa). `ToString()` mascara o valor.
 

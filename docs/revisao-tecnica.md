@@ -4,6 +4,9 @@
 
 > Revisão de segurança, correção e organização dos seis pacotes do TEC.Vault, feita no código: cada achado cita `arquivo:linha` conferido no fonte. Não altera código; aponta problemas, impacto e correção sugerida. As correções aplicadas estão em [Status dos achados](#-status-dos-achados).
 
+> [!NOTE]
+> Relatório datado: os alvos e comandos registrados aqui (inclusive as execuções em `net8.0`) refletem o repositório na data da revisão. Depois dela, o .NET 8 deixou de ser alvo (ADR 0013) e os provedores AWS e Google passaram para o `VaultHttpClient` (ADR 0012, revisão de 2026-10-29); veja o [CHANGELOG](../CHANGELOG.md).
+
 ## 📑 Sumário
 
 - [🎯 Escopo](#-escopo)
@@ -33,7 +36,7 @@
 | Pacotes | `TEC.Vault`, `TEC.Vault.AzureKeyVault`, `TEC.Vault.HashiCorpVault`, `TEC.Vault.Infisical`, `TEC.Vault.Synced`, `TEC.Vault.InMemory` |
 | Também lidos | `TEC.Vault.Tests` (categorias, lacunas), `samples/`, `.github/scripts/*.sh`, `.github/workflows/*.yml`, `build/`, `Directory.*.props`, `docs/` |
 | Foco | Abstrações de segredos/chaves/certificados; provedores; cache; health check; configuração por `appsettings`; certificados; chaves; resiliência (retentativa e circuit breaker); erros; observabilidade; scripts |
-| Fora do escopo | Publicação Native AOT de um app real (só o build com `IsAotCompatible` e avisos como erro); testes de integração e de carga |
+| Fora do escopo | Publicação Native AOT de um app real (só o build com `IsAotCompatible` e avisos como erro); testes de integração e de carga; `TEC.Vault.AwsSecretsManager` e `TEC.Vault.GoogleSecretManager`, que entraram depois desta revisão (ADR 0012, 2026-10-23) e não passaram por ela: as limitações atuais deles estão nas páginas dos provedores |
 
 O código já passou por endurecimento visível (testes `SecurityTests`, `HardeningRegressionTests`, `ReviewFixesTests`): validação de endereço e de nomes contra *path traversal*, redirecionamento desligado, buffers zerados, `ToString` mascarado, nada de nome de item em métricas e traces, segredos de login recusados em texto na configuração, provedor em memória e credencial de desenvolvedor travados fora de Development. Os achados abaixo são o que sobrou.
 

@@ -17,9 +17,13 @@
     <TecProjectRelativeDir>$([MSBuild]::MakeRelative('$(TecRepoRoot)', '$(MSBuildProjectDirectory)').Replace('\', '/'))</TecProjectRelativeDir>
   </PropertyGroup>
 
-  <!-- Linguagem e alvos: .NET 8 (LTS) e .NET 10 (LTS). Um projeto pode redefinir (ex.: gerador em netstandard2.0). -->
+  <!--
+    Linguagem e alvo: .NET 10 (LTS). Fica no plural (TargetFrameworks) de propósito: um projeto pode redefinir com
+    TargetFrameworks (ex.: gerador em netstandard2.0). Com TargetFramework no singular aqui, um TargetFrameworks no
+    csproj deixaria de valer e o projeto compilaria em net10.0 sem aviso.
+  -->
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <TargetFrameworks>net10.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
@@ -75,7 +79,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- Native AOT e trimming. Um pacote pode desligar (IsAotCompatible=false no csproj) justificando no comentário. -->
     <IsAotCompatible Condition="'$(IsAotCompatible)' == ''">true</IsAotCompatible>
-    <!-- Consistência da API entre os TFMs (sem baseline: a 0.0.1 é a primeira publicação) -->
+    <!-- Validação do pacote no pack (sem baseline: a 0.0.1 é a primeira publicação) -->
     <EnablePackageValidation>true</EnablePackageValidation>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
@@ -104,8 +108,6 @@
     <!-- README do pacote: o da pasta do projeto, se existir; senão o README da raiz do repositório -->
     <None Condition="Exists('$(MSBuildProjectDirectory)/README.md')" Include="$(MSBuildProjectDirectory)/README.md" Pack="true" PackagePath="\" Visible="false" />
     <None Condition="!Exists('$(MSBuildProjectDirectory)/README.md')" Include="$(TecRepoRoot)README.md" Pack="true" PackagePath="\" Visible="false" />
-    <!-- Polyfills internos para net8.0 (ex.: System.Threading.Lock): o código usa a API moderna sem #if -->
-    <Compile Include="$(TecRepoRoot)build/Polyfills/*.cs" Link="Polyfills/%(Filename)%(Extension)" Visible="false" />
     <!-- Testes, carga e benchmarks do próprio componente exercitam peças internas -->
     <InternalsVisibleTo Include="$(TecComponent).Tests" />
     <InternalsVisibleTo Include="$(TecComponent).LoadTests" />

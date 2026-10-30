@@ -21,18 +21,25 @@ public sealed record VaultToken(string Value, DateTimeOffset? ExpiresOn)
 /// <para>Várias requisições simultâneas com o token vencido aguardam um único login, e o desfecho dele (sucesso <b>ou</b> falha)
 /// vale para todas. Uma falha de login fica guardada por <see cref="FailureCooldown"/>: nesse intervalo as chamadas falham na hora
 /// com a mesma exceção, sem novo login (evita uma fila de logins em série com o endpoint de login fora do ar). O login não é
-/// cancelado pelo cancelamento de quem o disparou (as demais chamadas aguardam o mesmo login); só pelo <see cref="Dispose"/>.</para>
+/// cancelado pelo cancelamento de quem o disparou (as demais chamadas aguardam o mesmo login); só pelo <see cref="Dispose"/> e pelo
+/// teto de duração (<see cref="DefaultLoginTimeout"/>, ou o informado na criação): um login que não termina vira
+/// <see cref="TimeoutException"/> para todas as chamadas que o aguardam, e o próximo pedido de token tenta de novo depois do intervalo
+/// de falha.</para>
 /// </remarks>
 public sealed class VaultTokenSource : IDisposable
 {
     /// <summary>Por quanto tempo uma falha de login é devolvida às chamadas seguintes sem novo login: 2 segundos.</summary>
     public static readonly TimeSpan FailureCooldown = TimeSpan.FromSeconds(2);
 
+    /// <summary>Teto padrão de duração de um login (inclui as retentativas do cliente HTTP): 2 minutos.</summary>
+    public static readonly TimeSpan DefaultLoginTimeout = TimeSpan.FromMinutes(2);
+
     private static readonly TimeSpan MinSkew = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan MaxSkew = TimeSpan.FromMinutes(5);
 
     private readonly Func<CancellationToken, Task<VaultToken>> _login;
     private readonly TimeProvider _time;
+    private readonly TimeSpan _loginTimeout;
     private readonly Lock _sync = new();
     private readonly CancellationTokenSource _disposed = new();
     private volatile Entry? _current;
@@ -51,11 +58,21 @@ public sealed class VaultTokenSource : IDisposable
     /// <summary>Cria a fonte.</summary>
     /// <param name="login">Faz o login no cofre (relê credenciais de arquivo a cada chamada, acompanhando rotação).</param>
     /// <param name="timeProvider">Relógio. Padrão: <see cref="TimeProvider.System"/>.</param>
-    public VaultTokenSource(Func<CancellationToken, Task<VaultToken>> login, TimeProvider? timeProvider = null)
+    /// <param name="loginTimeout">
+    /// Teto de duração de um login, de 1 segundo a 30 minutos. Padrão: <see cref="DefaultLoginTimeout"/>. Vale mesmo para um
+    /// <paramref name="login"/> que ignore o <see cref="CancellationToken"/>.
+    /// </param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="loginTimeout"/> fora da faixa.</exception>
+    public VaultTokenSource(Func<CancellationToken, Task<VaultToken>> login, TimeProvider? timeProvider = null, TimeSpan? loginTimeout = null)
     {
         ArgumentNullException.ThrowIfNull(login);
+        var timeout = loginTimeout ?? DefaultLoginTimeout;
+        if (timeout < TimeSpan.FromSeconds(1) || timeout > TimeSpan.FromMinutes(30))
+            throw new ArgumentOutOfRangeException(nameof(loginTimeout), "O teto do login deve estar entre 1 segundo e 30 minutos.");
+
         _login = login;
         _time = timeProvider ?? TimeProvider.System;
+        _loginTimeout = timeout;
     }
 
     /// <summary>Token válido (do cache ou de um novo login).</summary>
@@ -98,7 +115,7 @@ public sealed class VaultTokenSource : IDisposable
         try
         {
             var now = _time.GetUtcNow();
-            var token = await _login(_disposed.Token).ConfigureAwait(false);
+            var token = await LoginWithTimeoutAsync().ConfigureAwait(false);
             if (string.IsNullOrEmpty(token.Value))
                 throw new VaultLoginException("o login no cofre não devolveu token");
 
@@ -133,6 +150,27 @@ public sealed class VaultTokenSource : IDisposable
             }
 
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Login limitado pelo teto: o cancelamento chega ao login e, se ele não o respeitar, a espera é abandonada mesmo assim
+    /// (a falha tardia do login abandonado é observada, sem virar exceção não observada).
+    /// </summary>
+    private async Task<VaultToken> LoginWithTimeoutAsync()
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_disposed.Token);
+        timeout.CancelAfter(_loginTimeout);
+        var login = _login(timeout.Token);
+        try
+        {
+            return await login.WaitAsync(timeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested && !_disposed.IsCancellationRequested)
+        {
+            _ = login.ContinueWith(static task => _ = task.Exception, CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            throw new TimeoutException($"O login no cofre não terminou em {_loginTimeout.TotalSeconds:0} segundos.");
         }
     }
 

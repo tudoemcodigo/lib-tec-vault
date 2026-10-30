@@ -21,8 +21,8 @@ Se cada microsserviço depender diretamente do SDK específico do provedor (como
 ## Decisão
 Criar o componente **TEC.Vault** com uma arquitetura de API unificada, fortemente tipada e segregada em contratos de granularidade fina:
 - **Segredos:**
-  - `ISecretReader`: apenas leitura de segredos (`GetSecretAsync`, `ListSecretNamesAsync`, `ListSecretVersionsAsync`).
-  - `ISecretStore`: gravação, rotação e exclusão (`SetSecretAsync`, `DeleteSecretAsync`, `RotateSecretAsync`).
+  - `ISecretReader`: apenas leitura de segredos (`GetSecretAsync`, `ExistsAsync`, `ListSecretsAsync`, `ListSecretVersionsAsync`).
+  - `ISecretStore`: gravação e exclusão (`SetSecretAsync`, `UpdateSecretPropertiesAsync`, `DeleteSecretAsync`). A geração e a rotação (`GenerateSecretAsync`, `RotateSecretAsync`) são extensões em `SecretStoreExtensions`, válidas para qualquer provedor.
   - `ISecretRecycleBin` e `ISecretBackup`: operações avançadas de recuperação e backup.
 - **Chaves Criptográficas:**
   - `IKeyReader`: leitura de metadados e chave pública.

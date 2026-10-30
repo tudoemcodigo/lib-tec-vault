@@ -39,9 +39,10 @@ flowchart LR
 |---|---|
 | Isolamento | Instância privada de `MemoryCache` (não usa o `IMemoryCache` da aplicação), até **1.024** entradas |
 | O que é guardado | Só leituras bem-sucedidas de `GetSecretAsync`, por nome + versão; nunca além de `ExpiresOn` do segredo. `ExistsAsync` e listagens não usam cache |
+| Chave | Nome e versão. O nome segue a comparação do provedor (`VaultProviderBase.NameComparer`): no Azure Key Vault, em memória e nas variáveis e no arquivo do Synced, `Db`, `DB` e `db` ocupam **uma** entrada; no HashiCorp Vault, no Infisical, no AWS, no Google, na pasta do Synced e em leitores que não derivam de `VaultProviderBase`, grafias diferentes são entradas diferentes (nunca se serve um segredo no lugar de outro). A versão é sempre comparada exatamente |
 | Consistência | Um contador de geração muda a cada escrita: uma leitura em andamento quando a escrita terminou não grava no cache (o valor antigo nunca volta) |
 | *Stampede* | Leituras simultâneas da mesma chave compartilham **uma** chamada ao cofre (`coalesced`) |
-| Cancelamento | O cancelamento de um chamador não cancela os demais; a chamada compartilhada termina sozinha, limitada pelos timeouts do provedor |
+| Cancelamento | O cancelamento de um chamador não cancela os demais. A chamada compartilhada tem teto próprio de **2 minutos**: passou dele (provedor travado ou que ignora o `CancellationToken`), todos os que aguardam recebem `VAULT_INDISPONIVEL` e a próxima leitura consulta o cofre de novo |
 | Falhas | Não são guardadas: a próxima leitura consulta o cofre de novo |
 | Expiração | Um valor expirado nunca é servido; sai da memória no próximo acesso (varredura no máximo a cada minuto, ou a cada duração se menor, mínimo 1 s) |
 | Encerramento | Com o container descartado, leituras em andamento terminam sem guardar; as seguintes vão direto ao provedor |
@@ -86,8 +87,8 @@ A sonda registrada pelo `AddTecVault` verifica **cada instância** de provedor r
 | Azure Key Vault | Uma página de um item de metadados (`secret.health`, `key.health`, `certificate.health`) |
 | HashiCorp Vault | Listagem de nomes no KV (segredos e certificados) e de chaves no Transit |
 | Infisical · Synced | Listagem de segredos (metadados) |
-| AWS Secrets Manager | `ListSecrets` com `MaxResults = 1` (qualquer falha vira `VAULT_INDISPONIVEL`; não passa pelo circuit breaker) |
-| Google Secret Manager | Listagem de segredos com `pageSize=1` (qualquer falha vira `VAULT_INDISPONIVEL`; não passa pelo circuit breaker) |
+| AWS Secrets Manager | `ListSecrets` com `MaxResults = 1` (`secret.health`), pelo circuit breaker e com métrica |
+| Google Secret Manager | Listagem de segredos com `pageSize=1` (`secret.health`), pelo circuit breaker e com métrica |
 | Encadeado | Chama a sonda de cada leitor da cadeia que a implementa e devolve a primeira falha |
 | Em memória | Sempre saudável |
 | Provedor próprio sem sonda | Listagem de metadados (`ListSecretsAsync`, `ListKeysAsync`, `ListCertificatesAsync`) |
@@ -211,6 +212,7 @@ Implementada pelos stores de todos os provedores do TEC.Vault e pela sonda compo
 |---|---|---|
 | `EnableSecretCache(duration)` / `Vault:Cache:Duration` | desligado | Maior que zero, no máximo 1 hora; recomendado até 5 minutos |
 | Entradas | 1.024 (fixo) | Limite da instância privada de cache |
+| Teto da leitura compartilhada | 2 min (fixo) | Depois dele, `VAULT_INDISPONIVEL` para quem aguarda; nada é guardado |
 
 ### Health check
 

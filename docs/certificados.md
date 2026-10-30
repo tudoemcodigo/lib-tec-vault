@@ -107,7 +107,7 @@ await certificados.ImportCertificateAsync("parceiro-pem-cifrado", pem,
 
 - O PEM é reconhecido em qualquer posição: saída do `openssl pkcs12 -nodes` (linhas `Bag Attributes`, `subject=` antes dos blocos) e arquivos com BOM UTF-8 funcionam. Só os blocos PEM reconhecidos vão ao cofre.
 - Os buffers criados pela biblioteca (texto decodificado, PEM normalizado, PKCS#12 temporário) são zerados após o uso; o array do chamador nunca é alterado — zere você mesmo depois de importar.
-- No .NET 9+ o PFX é carregado com `X509CertificateLoader` (limites padrão contra PFX malicioso); no .NET 8, com o construtor de `X509Certificate2` só depois de conferir o tipo do conteúdo (`VaultCertificateLoader`).
+- O PFX é carregado com `X509CertificateLoader` (limites padrão contra PFX malicioso), por `VaultCertificateLoader`.
 
 ```bash
 # Gerar um PEM aceito a partir de um PFX
