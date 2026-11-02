@@ -238,7 +238,7 @@ flowchart LR
 | [📂 Synced](docs/provedor-synced.md) | Pasta, variáveis e arquivo entregues por agentes, com receitas (ESO, CSI, Vault Agent, `bws run`) |
 | [🧠 Em memória](docs/provedor-em-memoria.md) | Cofre local para desenvolvimento e testes, e a trava de ambiente |
 | [🧱 Novo provedor](docs/novo-provedor.md) | Como escrever um provedor (`VaultProviderBase`, base HTTP, catálogo, testes de contrato) |
-| [📈 Observabilidade](docs/observabilidade.md) | Spans, métricas e eventos de log |
+| [📈 Observabilidade](docs/observabilidade.md) | Spans, métricas (`tec.vault.*`; os nomes `vault.*` estão obsoletos) e eventos de log (EventId 7000–7999) |
 | [🔁 Resiliência](docs/resiliencia.md) | Retentativa e circuit breaker: o que abre o circuito, opções e telemetria |
 | [🏛️ ADRs](docs/adr/README.md) | Registros de Decisões Arquiteturais |
 | [❌ Erros](docs/erros.md) | Códigos de `VaultErrors`, HTTP, conversão por provedor e exceções de configuração |

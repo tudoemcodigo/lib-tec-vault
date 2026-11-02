@@ -233,7 +233,7 @@ stateDiagram-v2
 - **Falha** só quando nada foi gravado.
 - Se a nova versão foi gravada, é **sucesso** com a versão criada em `Current`; `IsComplete`, `FailedVersions` e `Errors` dizem o que faltou. Nesse caso **não rotacione de novo** (criaria outra versão): chame `DisablePreviousSecretVersionsAsync`, que é idempotente.
 - Cancelamento **depois** da gravação não lança: as versões pendentes vão para `FailedVersions` com `VAULT_OPERACAO_CANCELADA`. Antes da gravação, o cancelamento lança `OperationCanceledException` e nada muda.
-- A sobrecarga com `ILogger` registra a rotação incompleta (evento **2009**, `Warning`) com nome, versões e código de erro — nunca o valor.
+- A sobrecarga com `ILogger` registra a rotação incompleta (evento **7509**, `Warning`) com nome, versões e código de erro — nunca o valor.
 
 <details>
 <summary>📄 Exemplo completo: rotação agendada com conclusão idempotente</summary>
@@ -347,7 +347,7 @@ var restaurado = await backups.RestoreSecretBackupAsync(await File.ReadAllBytesA
 |---|---|---|
 | `GenerateSecretAsync(this ISecretStore store, string name, SecretGenerationOptions? generation = null, SecretWriteOptions? options = null)` | `Task<Result<SecretProperties>>` | Gera um segredo forte e grava. O valor **não** é retornado |
 | `RotateSecretAsync(this ISecretStore store, string name, SecretGenerationOptions? generation = null, TimeSpan? validity = null, bool disablePreviousVersions = false, TimeProvider? timeProvider = null)` | `Task<Result<SecretRotationResult>>` | Nova versão gerada, mantendo `ContentType` e tags da atual; opcionalmente desabilita as anteriores |
-| `RotateSecretAsync(..., TimeProvider? timeProvider, ILogger logger)` | `Task<Result<SecretRotationResult>>` | Igual, registrando a rotação incompleta no `logger` (evento 2009) |
+| `RotateSecretAsync(..., TimeProvider? timeProvider, ILogger logger)` | `Task<Result<SecretRotationResult>>` | Igual, registrando a rotação incompleta no `logger` (evento 7509) |
 | `DisablePreviousSecretVersionsAsync(this ISecretStore store, string name, string currentVersion)` | `Task<Result<SecretRotationResult>>` | Desabilita todas as versões habilitadas exceto `currentVersion`. Idempotente |
 
 ### `VaultSecret`

@@ -38,18 +38,32 @@ public static class VaultDiagnostics
     /// <c>vault.provider</c> e <c>vault.circuit.state</c> = <c>open</c>, <c>half_open</c> ou <c>closed</c>. Chamadas recusadas com o
     /// circuito aberto aparecem em <see cref="OperationDurationName"/> com <c>error.type</c> = <c>VAULT_CIRCUITO_ABERTO</c>.</description></item>
     /// </list>
+    /// Os nomes antigos (<c>vault.operation.duration</c>, <c>vault.cache.requests</c>, <c>vault.circuit.state_changes</c>) são
+    /// <b>obsoletos</b>: emitem a mesma medição, com as mesmas tags, por uma versão MINOR e depois são removidos.
     /// Exportado sem configuração pelo <c>AddTecObservability</c> do TEC.Observability (prefixo <c>TEC.*</c>).
     /// </summary>
     public const string MeterName = "TEC.Vault";
 
     /// <summary>Histograma da duração das operações (segundos).</summary>
-    public const string OperationDurationName = "vault.operation.duration";
+    public const string OperationDurationName = "tec.vault.operation.duration";
 
     /// <summary>Contador de leituras do cache de segredos.</summary>
-    public const string CacheRequestsName = "vault.cache.requests";
+    public const string CacheRequestsName = "tec.vault.cache.requests";
 
     /// <summary>Contador de mudanças de estado do circuit breaker.</summary>
-    public const string CircuitStateChangesName = "vault.circuit.state_changes";
+    public const string CircuitStateChangesName = "tec.vault.circuit.state_changes";
+
+    /// <summary>Nome antigo de <see cref="OperationDurationName"/>.</summary>
+    [Obsolete("Use OperationDurationName (tec.vault.operation.duration). O instrumento antigo coexiste por uma versão MINOR e será removido.")]
+    public const string LegacyOperationDurationName = "vault.operation.duration";
+
+    /// <summary>Nome antigo de <see cref="CacheRequestsName"/>.</summary>
+    [Obsolete("Use CacheRequestsName (tec.vault.cache.requests). O instrumento antigo coexiste por uma versão MINOR e será removido.")]
+    public const string LegacyCacheRequestsName = "vault.cache.requests";
+
+    /// <summary>Nome antigo de <see cref="CircuitStateChangesName"/>.</summary>
+    [Obsolete("Use CircuitStateChangesName (tec.vault.circuit.state_changes). O instrumento antigo coexiste por uma versão MINOR e será removido.")]
+    public const string LegacyCircuitStateChangesName = "vault.circuit.state_changes";
 
     internal const string ProviderTag = "vault.provider";
     internal const string OperationTag = "vault.operation";
@@ -73,10 +87,21 @@ public static class VaultDiagnostics
     internal static readonly Counter<long> CircuitStateChanges = Meter.CreateCounter<long>(
         CircuitStateChangesName, unit: "{change}", description: "Mudanças de estado do circuit breaker do cofre.");
 
+#pragma warning disable CS0618 // instrumentos antigos: coexistência de uma MINOR (CMP-OBS-06)
+    internal static readonly Histogram<double> LegacyOperationDuration = Meter.CreateHistogram<double>(
+        LegacyOperationDurationName, unit: "s", description: "Obsoleto: use tec.vault.operation.duration.");
+
+    internal static readonly Counter<long> LegacyCacheRequests = Meter.CreateCounter<long>(
+        LegacyCacheRequestsName, unit: "{request}", description: "Obsoleto: use tec.vault.cache.requests.");
+
+    internal static readonly Counter<long> LegacyCircuitStateChanges = Meter.CreateCounter<long>(
+        LegacyCircuitStateChangesName, unit: "{change}", description: "Obsoleto: use tec.vault.circuit.state_changes.");
+#pragma warning restore CS0618
+
     /// <summary>Registra a duração de uma operação. <paramref name="errorType"/> só em falha.</summary>
     internal static void RecordOperation(string provider, string operation, double seconds, string? errorType)
     {
-        if (!OperationDuration.Enabled)
+        if (!OperationDuration.Enabled && !LegacyOperationDuration.Enabled)
             return;
 
         var tags = new TagList
@@ -87,19 +112,28 @@ public static class VaultDiagnostics
         if (errorType is not null)
             tags.Add(ErrorTypeTag, errorType);
         OperationDuration.Record(seconds, tags);
+        LegacyOperationDuration.Record(seconds, tags);
     }
 
     /// <summary>Registra uma leitura do cache (<c>hit</c>, <c>miss</c> ou <c>coalesced</c>).</summary>
     internal static void RecordCache(string provider, string result)
     {
+        var providerTag = new KeyValuePair<string, object?>(ProviderTag, provider);
+        var resultTag = new KeyValuePair<string, object?>(CacheResultTag, result);
         if (CacheRequests.Enabled)
-            CacheRequests.Add(1, new KeyValuePair<string, object?>(ProviderTag, provider), new KeyValuePair<string, object?>(CacheResultTag, result));
+            CacheRequests.Add(1, providerTag, resultTag);
+        if (LegacyCacheRequests.Enabled)
+            LegacyCacheRequests.Add(1, providerTag, resultTag);
     }
 
     /// <summary>Registra uma mudança de estado do circuito (<c>open</c>, <c>half_open</c> ou <c>closed</c>).</summary>
     internal static void RecordCircuitState(string provider, string state)
     {
+        var providerTag = new KeyValuePair<string, object?>(ProviderTag, provider);
+        var stateTag = new KeyValuePair<string, object?>(CircuitStateTag, state);
         if (CircuitStateChanges.Enabled)
-            CircuitStateChanges.Add(1, new KeyValuePair<string, object?>(ProviderTag, provider), new KeyValuePair<string, object?>(CircuitStateTag, state));
+            CircuitStateChanges.Add(1, providerTag, stateTag);
+        if (LegacyCircuitStateChanges.Enabled)
+            LegacyCircuitStateChanges.Add(1, providerTag, stateTag);
     }
 }
