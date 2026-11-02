@@ -24,7 +24,7 @@ Blindar toda a camada de telemetria, log e OpenTelemetry do `TEC.Vault` através
 3. **Higienização de Entradas Não Confiáveis (`SensitiveDataMasker`)**:
    - Nomes de itens recusados por erro de validação (que podem conter senhas digitadas por engano pelo operador ou payloads de ataque) nunca são impressos em claro no log: são registrados apenas como o tamanho da entrada e o HMAC com chave aleatória do processo (`SensitiveDataMasker.DescribeUntrusted`).
 4. **Métricas Sem Explosão de Cardinalidade**:
-   - O `Meter` `TEC.Vault` registra a duração das operações (`vault.operation.duration`) e contadores (`vault.cache.requests`, `vault.circuit.state_changes`) utilizando tags genéricas (`vault.provider`, `vault.operation`, `error.type`). **Nenhum nome de item, versão ou valor é utilizado como dimensão/tag de métrica**.
+   - O `Meter` `TEC.Vault` registra a duração das operações (`tec.vault.operation.duration`) e contadores (`tec.vault.cache.requests`, `tec.vault.circuit.state_changes`) utilizando tags genéricas (`vault.provider`, `vault.operation`, `error.type`). **Nenhum nome de item, versão ou valor é utilizado como dimensão/tag de métrica**.
 
 ## Consequências
 ### Positivas

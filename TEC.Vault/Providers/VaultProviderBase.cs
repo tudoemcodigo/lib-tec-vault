@@ -280,7 +280,7 @@ public abstract class VaultProviderBase
         if (error is not null)
         {
             activity.SetTag("vault.error_code", error.Code);
-            // Mesmo atributo da métrica vault.operation.duration (convenção do OpenTelemetry)
+            // Mesmo atributo da métrica tec.vault.operation.duration (convenção do OpenTelemetry)
             activity.SetTag(VaultDiagnostics.ErrorTypeTag, error.Code);
             activity.SetStatus(ActivityStatusCode.Error, error.Code);
         }
