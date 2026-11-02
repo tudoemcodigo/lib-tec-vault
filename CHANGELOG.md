@@ -7,7 +7,15 @@ Todas as mudanças relevantes do **TEC.Vault** são registradas aqui. O formato 
 ### 🔄 Alterado
 
 - **Telemetria na convenção da Doutrina TEC (CMP-OBS-06/07, ADR 0007).** O `Meter` e o `ActivitySource` continuam `TEC.Vault`; as tags (`vault.provider`, `vault.operation`, `error.type`, `vault.cache.result`, `vault.circuit.state`) não mudam.
-  - Instrumentos renomeados: `vault.operation.duration` para `tec.vault.operation.duration`, `vault.cache.requests` para `tec.vault.cache.requests` e `vault.circuit.state_changes` para `tec.vault.circuit.state_changes`. Os nomes `vault.*` ficam **obsoletos por uma versão MINOR**: emitem a mesma medição, com as mesmas tags, junto com os novos, e serão removidos na MINOR seguinte a esta (somar os dois nomes no mesmo painel conta em dobro). Migre dashboards e alertas. As constantes `OperationDurationName`, `CacheRequestsName` e `CircuitStateChangesName` passam a valer os nomes novos; os nomes antigos estão em `LegacyOperationDurationName`, `LegacyCacheRequestsName` e `LegacyCircuitStateChangesName` (`[Obsolete]`).
+  - **Nomes antigos de instrumento renomeados sem coexistência** (ADR 0009 da Doutrina: nenhum consumidor em produção). Os nomes `vault.*` deixam de existir; não há instrumento duplicado nem constante obsoleta. Migre dashboards e alertas:
+
+    | Antigo | Novo |
+    |---|---|
+    | `vault.operation.duration` | `tec.vault.operation.duration` |
+    | `vault.cache.requests` | `tec.vault.cache.requests` |
+    | `vault.circuit.state_changes` | `tec.vault.circuit.state_changes` |
+
+    As constantes `OperationDurationName`, `CacheRequestsName` e `CircuitStateChangesName` valem os nomes novos.
   - **EventId na faixa 7000-7999 (CMP-OBS-07). Filtros, alertas e consultas de log por EventId precisam mudar.** Provedores: `3001` e `3002` (Synced) viram `7001` e `7002`; `3101` (AWS) vira `7101`. Núcleo (antes `2000-2014` e `2100-2107`, que caíam na faixa do TEC.Cqrs): somam 5500, ou seja, `7500-7514` e `7600-7607` (ex.: `2004` vira `7504`, `2100` vira `7600`). O núcleo não manteve o sufixo porque `2001`/`2002`/`2101` colidiriam com `7001`/`7002`/`7101`. A tabela completa está em [docs/observabilidade.md](docs/observabilidade.md).
 
 ## [0.0.1] - 2026-10-30

@@ -98,7 +98,7 @@ internal sealed class GiantBodyHandler(int totalBytes) : HttpMessageHandler
     }
 }
 
-/// <summary>Operações registradas no histograma <c>vault.operation.duration</c> para um provedor (provedor, operação, erro).</summary>
+/// <summary>Operações registradas no histograma <c>tec.vault.operation.duration</c> para um provedor (provedor, operação, erro).</summary>
 internal sealed class OperationMetrics : IDisposable
 {
     private readonly MeterListener _listener = new();

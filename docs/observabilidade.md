@@ -103,9 +103,6 @@ sum(rate(tec_vault_cache_requests_total{vault_cache_result="hit"}[5m])) / sum(ra
 | `OperationDurationName` | `const string` | `"tec.vault.operation.duration"` | Histograma de duração |
 | `CacheRequestsName` | `const string` | `"tec.vault.cache.requests"` | Contador do cache de segredos |
 | `CircuitStateChangesName` | `const string` | `"tec.vault.circuit.state_changes"` | Contador de mudanças de estado do circuit breaker |
-| `LegacyOperationDurationName` | `const string` | `"vault.operation.duration"` | **Obsoleto** (nome antigo do histograma) |
-| `LegacyCacheRequestsName` | `const string` | `"vault.cache.requests"` | **Obsoleto** (nome antigo do contador do cache) |
-| `LegacyCircuitStateChangesName` | `const string` | `"vault.circuit.state_changes"` | **Obsoleto** (nome antigo do contador do circuit breaker) |
 
 ### Traces
 
@@ -133,8 +130,7 @@ Entradas recusadas na validação **não** geram `Activity` (só a métrica, com
 | `tec.vault.cache.requests` | Contador (`long`) | `{request}` | `vault.provider`, `vault.cache.result` = `hit`, `miss` ou `coalesced` | Toda leitura com o cache ligado (`coalesced` = aguardou uma leitura simultânea da mesma chave) |
 | `tec.vault.circuit.state_changes` | Contador (`long`) | `{change}` | `vault.provider`, `vault.circuit.state` = `open`, `half_open` ou `closed` | Toda mudança de estado do circuit breaker ([🔁 Resiliência](resiliencia.md)); chamadas recusadas aparecem em `tec.vault.operation.duration` com `error.type` = `VAULT_CIRCUITO_ABERTO` |
 
-> [!WARNING]
-> **Nomes antigos obsoletos.** Os instrumentos `vault.operation.duration`, `vault.cache.requests` e `vault.circuit.state_changes` continuam a ser emitidos, com a mesma medição e as mesmas tags, **por uma versão MINOR** e depois são removidos (convenção `tec.<componente>.<nome>`, CMP-OBS-06). Migre dashboards, alertas e *views* para os nomes `tec.vault.*`. Ao somar os dois nomes no mesmo painel, a medição conta em dobro. Na exportação Prometheus os nomes viram `tec_vault_operation_duration_seconds_*` e `tec_vault_cache_requests_total`.
+> Na exportação Prometheus os nomes viram `tec_vault_operation_duration_seconds_*`, `tec_vault_cache_requests_total` e `tec_vault_circuit_state_changes_total`.
 
 A contagem de operações por tipo e resultado vem do próprio histograma (convenção do OpenTelemetry). Todas as dimensões são de baixa cardinalidade.
 

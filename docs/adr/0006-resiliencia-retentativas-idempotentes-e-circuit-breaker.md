@@ -29,7 +29,7 @@ Implementar resiliência em duas camadas complementares, operando de fora para d
 ### Positivas
 - Proteção ativa do cofre de segredos contra saturação durante momentos de instabilidade.
 - Falha rápida (*fail-fast*) da aplicação quando o cofre estiver comprovadamente inacessível, liberando threads do runtime.
-- Telemetria e métricas dedicadas (`vault.circuit.state_changes`) permitindo dashboards e alarmes de SRE em tempo real.
+- Telemetria e métricas dedicadas (`tec.vault.circuit.state_changes`) permitindo dashboards e alarmes de SRE em tempo real.
 
 ### Neutras / Negativas
 - A camada 1 fica no `VaultHttpClient` (HashiCorp Vault, Infisical, AWS e Google, este desde a revisão de 2026-10-29 do ADR 0012) e no SDK do Azure. Tempo limite, inclusive na leitura do corpo, sai como `VAULT_INDISPONIVEL` e conta no circuito.

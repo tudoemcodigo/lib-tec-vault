@@ -10,7 +10,7 @@ namespace TEC.Vault.Tests;
 
 /// <summary>
 /// Convenção de telemetria da Doutrina TEC (CMP-OBS-06/07): instrumentos <c>tec.vault.*</c> e EventId na faixa 7000-7999.
-/// Os nomes antigos <c>vault.*</c> coexistem por uma MINOR e emitem a mesma medição.
+/// Os nomes antigos <c>vault.*</c> foram removidos sem coexistência (ADR 0009 da Doutrina).
 /// </summary>
 public class TelemetryConventionTests
 {
@@ -52,8 +52,7 @@ public class TelemetryConventionTests
             .ToList();
     }
 
-    [Test]
-    public async Task Every_instrument_starts_with_tec_vault_except_the_deprecated_names()
+    private static List<string> InstrumentNames()
     {
         System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(VaultDiagnostics).TypeHandle);   // cria os instrumentos
         var names = new ConcurrentBag<string>();
@@ -64,40 +63,45 @@ public class TelemetryConventionTests
                 names.Add(instrument.Name);
         };
         listener.Start();
-
-        var all = names.Distinct().ToList();
-        await Assert.That(all.Count).IsGreaterThanOrEqualTo(6);
-        foreach (var name in all)
-        {
-            await Assert.That(name.StartsWith("tec.vault.", StringComparison.Ordinal) || LegacyNames.Contains(name)).IsTrue();
-        }
-        // Cada nome antigo tem o novo correspondente
-        foreach (var legacy in LegacyNames)
-            await Assert.That(all.Contains("tec." + legacy)).IsTrue();
+        return names.Distinct().ToList();
     }
 
     [Test]
-    public async Task Public_name_constants_follow_the_convention_and_legacy_constants_are_obsolete()
+    public async Task Every_instrument_starts_with_tec_vault_without_exception()
+    {
+        var all = InstrumentNames();
+        await Assert.That(all.Count).IsEqualTo(3);
+        foreach (var name in all)
+            await Assert.That(name.StartsWith("tec.vault.", StringComparison.Ordinal)).IsTrue().Because(name);
+    }
+
+    [Test]
+    public async Task Old_vault_instrument_names_no_longer_exist()
+    {
+        var all = InstrumentNames();
+        foreach (var legacy in LegacyNames)
+            await Assert.That(all.Contains(legacy)).IsFalse().Because(legacy);
+
+        // Nenhuma constante pública de nome sobrou com o nome antigo (nem "Legacy*")
+        var constants = typeof(VaultDiagnostics).GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(f => f.IsLiteral && f.FieldType == typeof(string)).ToList();
+        await Assert.That(constants.Any(f => f.Name.StartsWith("Legacy", StringComparison.Ordinal))).IsFalse();
+        await Assert.That(constants.Any(f => LegacyNames.Contains((string)f.GetRawConstantValue()!))).IsFalse();
+    }
+
+    [Test]
+    public async Task Public_name_constants_follow_the_convention()
     {
         await Assert.That(VaultDiagnostics.OperationDurationName).IsEqualTo("tec.vault.operation.duration");
         await Assert.That(VaultDiagnostics.CacheRequestsName).IsEqualTo("tec.vault.cache.requests");
         await Assert.That(VaultDiagnostics.CircuitStateChangesName).IsEqualTo("tec.vault.circuit.state_changes");
-
-        var legacy = typeof(VaultDiagnostics).GetFields(BindingFlags.Public | BindingFlags.Static)
-            .Where(f => f.Name.StartsWith("Legacy", StringComparison.Ordinal)).ToList();
-        await Assert.That(legacy.Count).IsEqualTo(3);
-        foreach (var field in legacy)
-        {
-            await Assert.That(field.GetCustomAttribute<ObsoleteAttribute>()).IsNotNull();
-            await Assert.That(LegacyNames.Contains((string)field.GetRawConstantValue()!)).IsTrue();
-        }
     }
 
     [Test]
-    public async Task Old_and_new_duration_instruments_receive_the_same_measurement_and_tags()
+    public async Task Duration_instrument_records_value_and_tags_without_the_item_name()
     {
         var store = Memory.Secrets();
-        string name = "coex-" + Guid.NewGuid().ToString("N");
+        string name = "tel-" + Guid.NewGuid().ToString("N");
 
         var measured = Capture(() =>
         {
@@ -106,24 +110,19 @@ public class TelemetryConventionTests
             store.GetSecretAsync("nome invalido").GetAwaiter().GetResult();        // entrada recusada
         }, provider: "InMemory");
 
-        var newer = measured.Where(m => m.Instrument == "tec.vault.operation.duration").ToList();
-        var older = measured.Where(m => m.Instrument == "vault.operation.duration").ToList();
-        await Assert.That(newer.Count).IsGreaterThanOrEqualTo(3);
-        await Assert.That(older.Count).IsEqualTo(newer.Count);
-        // Testes em paralelo intercalam as medições: compara como conjuntos (valor + tags), não por posição
-        static string Key((string Instrument, string Name, double Value, Dictionary<string, object?> Tags) m) =>
-            $"{m.Value:R}|{string.Join(",", m.Tags.OrderBy(t => t.Key).Select(t => $"{t.Key}={t.Value}"))}";
-        await Assert.That(older.Select(Key).Order()).IsEquivalentTo(newer.Select(Key).Order());
-        // Tags inalteradas e sem o nome do item
+        await Assert.That(measured.All(m => m.Instrument == "tec.vault.operation.duration")).IsTrue();
+        await Assert.That(measured.Count).IsGreaterThanOrEqualTo(3);
+        await Assert.That(measured.All(m => m.Value >= 0)).IsTrue();
+        await Assert.That(measured.Any(m => m.Tags.ContainsKey("error.type"))).IsTrue();
         var allowed = new[] { "vault.provider", "vault.operation", "error.type" };
         await Assert.That(measured.All(m => m.Tags.Keys.All(allowed.Contains))).IsTrue();
         await Assert.That(measured.Any(m => m.Tags.Values.Any(v => v is string s && s.Contains(name, StringComparison.Ordinal)))).IsFalse();
     }
 
     [Test]
-    public async Task Old_and_new_cache_instruments_receive_the_same_measurement_and_tags()
+    public async Task Cache_instrument_records_hit_and_miss_once_each()
     {
-        string provider = "Coex-" + Guid.NewGuid().ToString("N");
+        string provider = "Tel-" + Guid.NewGuid().ToString("N");
         var memory = Memory.Secrets();
         memory.SetSecretAsync("a", "1").GetAwaiter().GetResult();
         using var cache = new CachingSecretReader(new DiagnosticsTests.NamedSecretStore(memory, provider), TimeSpan.FromMinutes(5));
@@ -134,28 +133,24 @@ public class TelemetryConventionTests
             cache.GetSecretAsync("a").GetAwaiter().GetResult();   // hit
         }, provider);
 
-        string Key((string Instrument, string Name, double Value, Dictionary<string, object?> Tags) m) =>
-            $"{m.Value}|{string.Join(",", m.Tags.OrderBy(t => t.Key).Select(t => $"{t.Key}={t.Value}"))}";
-        var newer = measured.Where(m => m.Instrument == "tec.vault.cache.requests").Select(Key).Order().ToList();
-        var older = measured.Where(m => m.Instrument == "vault.cache.requests").Select(Key).Order().ToList();
-        await Assert.That(newer.Count).IsEqualTo(2);
-        await Assert.That(older).IsEquivalentTo(newer);
-        await Assert.That(newer.Any(k => k.Contains("vault.cache.result=hit", StringComparison.Ordinal))).IsTrue();
+        await Assert.That(measured.Count).IsEqualTo(2);
+        await Assert.That(measured.All(m => m.Instrument == "tec.vault.cache.requests" && m.Value == 1)).IsTrue();
+        var results = measured.Select(m => (string)m.Tags["vault.cache.result"]!).Order().ToList();
+        await Assert.That(results).IsEquivalentTo(new[] { "hit", "miss" });
     }
 
     [Test]
-    public async Task Old_and_new_circuit_instruments_receive_the_same_measurement_and_tags()
+    public async Task Circuit_instrument_records_state_and_provider()
     {
         string provider = "Circ-" + Guid.NewGuid().ToString("N");
         var measured = Capture(() => VaultDiagnostics.RecordCircuitState(provider, VaultDiagnostics.CircuitOpen), provider);
 
-        var newer = measured.Single(m => m.Instrument == "tec.vault.circuit.state_changes");
-        var older = measured.Single(m => m.Instrument == "vault.circuit.state_changes");
-        await Assert.That(older.Value).IsEqualTo(newer.Value);
-        await Assert.That(older.Tags["vault.circuit.state"]).IsEqualTo("open");
-        await Assert.That(newer.Tags["vault.circuit.state"]).IsEqualTo("open");
-        await Assert.That(older.Tags["vault.provider"]).IsEqualTo(provider);
-        await Assert.That(newer.Tags.Count).IsEqualTo(older.Tags.Count);
+        var m = measured.Single();
+        await Assert.That(m.Instrument).IsEqualTo("tec.vault.circuit.state_changes");
+        await Assert.That(m.Value).IsEqualTo(1);
+        await Assert.That(m.Tags["vault.circuit.state"]).IsEqualTo("open");
+        await Assert.That(m.Tags["vault.provider"]).IsEqualTo(provider);
+        await Assert.That(m.Tags.Count).IsEqualTo(2);
     }
 
     [Test]
