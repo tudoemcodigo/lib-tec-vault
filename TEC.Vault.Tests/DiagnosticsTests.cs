@@ -186,7 +186,7 @@ public class DiagnosticsTests
             : X509KeyStorageFlags.EphemeralKeySet);
 
     /// <summary>Repassa tudo ao cofre interno, trocando só o nome do provedor (isola as métricas deste teste).</summary>
-    private sealed class NamedSecretStore(ISecretStore inner, string providerName) : ISecretStore
+    internal sealed class NamedSecretStore(ISecretStore inner, string providerName) : ISecretStore
     {
         public string ProviderName => providerName;
 

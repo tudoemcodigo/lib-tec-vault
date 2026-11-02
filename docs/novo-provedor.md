@@ -41,7 +41,7 @@ O que `ExecuteAsync` (o coração de `VaultProviderBase`) faz em cada operação
 ```mermaid
 flowchart TD
     A["ExecuteAsync"] --> B{"inputError?"}
-    B -->|"sim"| C["log Debug 2006 com nome descrito por tamanho + HMAC<br/>métrica com error.type<br/>Result de falha, sem chamar o cofre"]
+    B -->|"sim"| C["log Debug 7506 com nome descrito por tamanho + HMAC<br/>métrica com error.type<br/>Result de falha, sem chamar o cofre"]
     B -->|"não"| D["Activity Client 'Cofre operação'"]
     D --> E["action"]
     E -->|"Result"| F["log e métrica"]
@@ -50,12 +50,12 @@ flowchart TD
     L --> F
     E -->|"outra exceção"| H{"MapException"}
     H -->|"VaultFailure"| F
-    H -->|"null"| I["log Error 2005 com pilha, VAULT_FALHA"]
+    H -->|"null"| I["log Error 7505 com pilha, VAULT_FALHA"]
     F --> J{"sucesso?"}
-    J -->|"sim, escrita"| K["Information 2001 auditoria"]
-    J -->|"sim, leitura"| M["Debug 2000"]
-    J -->|"falha de infraestrutura"| N["Error 2004"]
-    J -->|"falha esperada"| O["Information 2002 ou Warning 2003"]
+    J -->|"sim, escrita"| K["Information 7501 auditoria"]
+    J -->|"sim, leitura"| M["Debug 7500"]
+    J -->|"falha de infraestrutura"| N["Error 7504"]
+    J -->|"falha esperada"| O["Information 7502 ou Warning 7503"]
 ```
 
 ### O que é neutro e o que é específico
@@ -466,7 +466,7 @@ Os provedores existentes herdam assim (AWS e Google têm só testes de unidade, 
 | `ExecuteAsync<T>(string operation, string? itemName, Error? inputError, bool isWrite, Func<CancellationToken, Task<Result<T>>> action, CancellationToken cancellationToken)` *(protected)* | `Task<Result<T>>` | Executa uma operação com retorno |
 | `ExecuteAsync(string operation, string? itemName, Error? inputError, bool isWrite, Func<CancellationToken, Task> action, CancellationToken cancellationToken)` *(protected)* | `Task<Result>` | Executa uma operação sem retorno |
 | `CopyTags(IEnumerable<KeyValuePair<string, string>>? tags)` *(protected static)* | `IReadOnlyDictionary<string, string>` | Cópia independente das tags; tolera dados fora do esperado (chave nula ignorada, valor nulo vira vazio, chave repetida fica com o último valor); sem tags, a instância vazia compartilhada |
-| `AuditSensitiveRead(string operation, string itemName, string reason)` *(protected)* | `void` | Auditoria em `Information` de uma leitura sensível (evento 2008); `reason` é texto fixo, nunca valor |
+| `AuditSensitiveRead(string operation, string itemName, string reason)` *(protected)* | `void` | Auditoria em `Information` de uma leitura sensível (evento 7508); `reason` é texto fixo, nunca valor |
 | `EnsureListLimit(int count, int maxItems)` *(protected static)* | `void` | Chame antes de incluir cada item da listagem (`list.Count + 1`) ou com o total já conhecido. Acima de `maxItems` lança `VaultListLimitExceededException`, que interrompe a operação; `ExecuteAsync` devolve `VaultErrors.TooManyItems()` (`VAULT_LISTAGEM_ACIMA_DO_LIMITE`), sem ler o restante |
 
 `VaultListLimitExceededException` (`sealed`, namespace `TEC.Vault.Providers`, propriedade `MaxItems`): para classes auxiliares que não derivam de `VaultProviderBase` (ex.: um resolvedor de nomes); lance-a dentro da operação e `ExecuteAsync` **sempre** a converte em `VAULT_LISTAGEM_ACIMA_DO_LIMITE`, mesmo que `MapException` não a conheça. Nunca chega ao consumidor.
@@ -684,10 +684,10 @@ A base não tem opções próprias; as que um provedor novo deve oferecer, segui
 
 | Situação | Resultado |
 |---|---|
-| `inputError` informado | `Result` com esse erro (o cofre não é chamado; evento 2006) |
-| `EnsureListLimit` estourou ou `VaultListLimitExceededException` lançada | `VAULT_LISTAGEM_ACIMA_DO_LIMITE` (`Failure`, evento 2004) |
+| `inputError` informado | `Result` com esse erro (o cofre não é chamado; evento 7506) |
+| `EnsureListLimit` estourou ou `VaultListLimitExceededException` lançada | `VAULT_LISTAGEM_ACIMA_DO_LIMITE` (`Failure`, evento 7504) |
 | Exceção mapeada por `MapException` | `Result` com `VaultFailure.Error`, `Detail` no log |
-| Exceção não mapeada | `VAULT_FALHA` (evento 2005, com pilha) |
+| Exceção não mapeada | `VAULT_FALHA` (evento 7505, com pilha) |
 | Cancelamento pelo chamador | `OperationCanceledException` relançada (métrica `canceled`) |
 | Construtor com `providerName` vazio ou `logger` nulo | `ArgumentException` / `ArgumentNullException` |
 | Opções inválidas no `UseXxx` / `VaultEndpoint.Validate` / `VaultHttpSettings.Validate` / `VaultCredentialInput.Create` | `InvalidOperationException` na subida |

@@ -403,7 +403,7 @@ internal sealed class AwsCredentialSource : IDisposable
 /// <summary>Mensagens de log do provedor AWS (source generator). Nunca registram valores.</summary>
 internal static partial class AwsLog
 {
-    [LoggerMessage(3101, LogLevel.Information,
+    [LoggerMessage(7101, LogLevel.Information,
         "AWS Secrets Manager: o serviço de metadados do EC2 não respondeu ({ExceptionType}); o processo passa a usar as chaves estáticas configuradas.")]
     public static partial void InstanceMetadataUnavailable(ILogger logger, string exceptionType);
 }

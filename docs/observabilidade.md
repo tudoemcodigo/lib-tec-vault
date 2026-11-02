@@ -74,19 +74,19 @@ Os eventos de escrita saem em `Information`; as leituras, em `Debug`. Para mante
 
 ```text
 # Taxa de erro por operação
-sum by (vault_operation, error_type) (rate(vault_operation_duration_seconds_count{error_type!=""}[5m]))
+sum by (vault_operation, error_type) (rate(tec_vault_operation_duration_seconds_count{error_type!=""}[5m]))
 
 # p95 de latência das leituras de segredo
-histogram_quantile(0.95, sum by (le) (rate(vault_operation_duration_seconds_bucket{vault_operation="secret.get"}[5m])))
+histogram_quantile(0.95, sum by (le) (rate(tec_vault_operation_duration_seconds_bucket{vault_operation="secret.get"}[5m])))
 
 # Eficiência do cache
-sum(rate(vault_cache_requests_total{vault_cache_result="hit"}[5m])) / sum(rate(vault_cache_requests_total[5m]))
+sum(rate(tec_vault_cache_requests_total{vault_cache_result="hit"}[5m])) / sum(rate(tec_vault_cache_requests_total[5m]))
 ```
 
 > [!TIP]
-> Crie alertas para: evento 2004 com `403` repetido (permissão ou rede), operações `*.purge` (2001), leituras
-> sensíveis (2008), rotações incompletas (2009), `error.type = VAULT_LISTAGEM_ACIMA_DO_LIMITE` e falhas de carga de
-> configuração (2100–2103, 2106).
+> Crie alertas para: evento 7504 com `403` repetido (permissão ou rede), operações `*.purge` (7501), leituras
+> sensíveis (7508), rotações incompletas (7509), `error.type = VAULT_LISTAGEM_ACIMA_DO_LIMITE` e falhas de carga de
+> configuração (7600–7603, 7606).
 
 ---
 
@@ -100,9 +100,12 @@ sum(rate(vault_cache_requests_total{vault_cache_result="hit"}[5m])) / sum(rate(v
 |---|---|---|---|
 | `ActivitySourceName` | `const string` | `"TEC.Vault"` | Nome do `ActivitySource` |
 | `MeterName` | `const string` | `"TEC.Vault"` | Nome do `Meter` |
-| `OperationDurationName` | `const string` | `"vault.operation.duration"` | Histograma de duração |
-| `CacheRequestsName` | `const string` | `"vault.cache.requests"` | Contador do cache de segredos |
-| `CircuitStateChangesName` | `const string` | `"vault.circuit.state_changes"` | Contador de mudanças de estado do circuit breaker |
+| `OperationDurationName` | `const string` | `"tec.vault.operation.duration"` | Histograma de duração |
+| `CacheRequestsName` | `const string` | `"tec.vault.cache.requests"` | Contador do cache de segredos |
+| `CircuitStateChangesName` | `const string` | `"tec.vault.circuit.state_changes"` | Contador de mudanças de estado do circuit breaker |
+| `LegacyOperationDurationName` | `const string` | `"vault.operation.duration"` | **Obsoleto** (nome antigo do histograma) |
+| `LegacyCacheRequestsName` | `const string` | `"vault.cache.requests"` | **Obsoleto** (nome antigo do contador do cache) |
+| `LegacyCircuitStateChangesName` | `const string` | `"vault.circuit.state_changes"` | **Obsoleto** (nome antigo do contador do circuit breaker) |
 
 ### Traces
 
@@ -120,15 +123,18 @@ Cada operação que passa da validação de entrada gera uma `Activity`:
 | `error.type` | O mesmo valor da métrica: código de `VaultErrors` ou `canceled` (só em falha) |
 | Status | `Error` em falha ou cancelamento |
 
-Entradas recusadas na validação **não** geram `Activity` (só a métrica, com duração 0, e o log 2006).
+Entradas recusadas na validação **não** geram `Activity` (só a métrica, com duração 0, e o log 7506).
 
 ### Métricas
 
 | Instrumento | Tipo | Unidade | Dimensões | Quando |
 |---|---|---|---|---|
-| `vault.operation.duration` | Histograma (`double`) | `s` | `vault.provider`, `vault.operation`, `error.type` (só em falha) | Toda operação de provedor, inclusive entradas recusadas (duração 0) e cancelamentos (`canceled`) |
-| `vault.cache.requests` | Contador (`long`) | `{request}` | `vault.provider`, `vault.cache.result` = `hit`, `miss` ou `coalesced` | Toda leitura com o cache ligado (`coalesced` = aguardou uma leitura simultânea da mesma chave) |
-| `vault.circuit.state_changes` | Contador (`long`) | `{change}` | `vault.provider`, `vault.circuit.state` = `open`, `half_open` ou `closed` | Toda mudança de estado do circuit breaker ([🔁 Resiliência](resiliencia.md)); chamadas recusadas aparecem em `vault.operation.duration` com `error.type` = `VAULT_CIRCUITO_ABERTO` |
+| `tec.vault.operation.duration` | Histograma (`double`) | `s` | `vault.provider`, `vault.operation`, `error.type` (só em falha) | Toda operação de provedor, inclusive entradas recusadas (duração 0) e cancelamentos (`canceled`) |
+| `tec.vault.cache.requests` | Contador (`long`) | `{request}` | `vault.provider`, `vault.cache.result` = `hit`, `miss` ou `coalesced` | Toda leitura com o cache ligado (`coalesced` = aguardou uma leitura simultânea da mesma chave) |
+| `tec.vault.circuit.state_changes` | Contador (`long`) | `{change}` | `vault.provider`, `vault.circuit.state` = `open`, `half_open` ou `closed` | Toda mudança de estado do circuit breaker ([🔁 Resiliência](resiliencia.md)); chamadas recusadas aparecem em `tec.vault.operation.duration` com `error.type` = `VAULT_CIRCUITO_ABERTO` |
+
+> [!WARNING]
+> **Nomes antigos obsoletos.** Os instrumentos `vault.operation.duration`, `vault.cache.requests` e `vault.circuit.state_changes` continuam a ser emitidos, com a mesma medição e as mesmas tags, **por uma versão MINOR** e depois são removidos (convenção `tec.<componente>.<nome>`, CMP-OBS-06). Migre dashboards, alertas e *views* para os nomes `tec.vault.*`. Ao somar os dois nomes no mesmo painel, a medição conta em dobro. Na exportação Prometheus os nomes viram `tec_vault_operation_duration_seconds_*` e `tec_vault_cache_requests_total`.
 
 A contagem de operações por tipo e resultado vem do próprio histograma (convenção do OpenTelemetry). Todas as dimensões são de baixa cardinalidade.
 
@@ -136,35 +142,36 @@ A contagem de operações por tipo e resultado vem do próprio histograma (conve
 
 Mensagens geradas por *source generator* (`LoggerMessage`: sem alocação com o nível desligado). Categoria: a classe do provedor (ex.: `TEC.Vault.AzureKeyVault.AzureKeyVaultSecretStore`), o health check ou o provedor de configuração.
 
-| Evento | Nível | Mensagem (resumo) | Quando |
+| Evento (EventId) | Nível | Mensagem (resumo) | Quando |
 |:---:|---|---|---|
-| 2000 | Debug | `Cofre {Provider}: {Operation} de '{ItemName}' concluída em {ElapsedMilliseconds} ms.` | Leitura concluída |
-| 2001 | Information | `Auditoria do cofre {Provider}: {Operation} de '{ItemName}' concluída...` | Escrita concluída (inclui download de certificado) |
-| 2002 | Information | `Cofre {Provider}: {Operation} de '{ItemName}' retornou {ErrorCode} ({Detail}).` | Falha esperada em leitura (ex.: não encontrado) |
-| 2003 | Warning | `Auditoria do cofre ... retornou {ErrorCode} ({Detail}).` | Falha esperada em escrita |
-| 2004 | Error | `... falhou por infraestrutura: {ErrorCode} ({Detail}).` | Falha `ExternalService` ou `Failure` (inclui listagem acima do limite) |
-| 2005 | Error | `... lançou {ExceptionType} inesperada; convertida em {ErrorCode}.` | Exceção não mapeada (com pilha) |
-| 2006 | Debug | `... de '{ItemName}' recusada na validação de entrada ({Field}).` | Entrada inválida; `{ItemName}` vem como `<N caracteres, hmac:xxxxxxxxxxxx>` |
-| 2007 | Warning | `Health check do cofre falhou: {ErrorCode}.` | Health check com falha |
-| 2008 | Information | `Auditoria do cofre {Provider}: {Operation} de '{ItemName}': {Reason}.` | Leitura sensível (ex.: segredo gerenciado com chave privada) |
-| 2009 | Warning | `... rotação de '{ItemName}' gravou a versão {Version}, mas {Pending} versões anteriores podem continuar habilitadas ({ErrorCode})...` | `RotateSecretAsync` (sobrecarga com `ILogger`) incompleta |
-| 2010 | Warning | `Health check do cofre sem nenhuma verificação...` | Nenhum store registrado oferece verificação (ex.: só `IKeyCryptography` sem `IVaultHealthProbe`); registrado uma vez |
-| 2011 | Warning | `Cofre {Provider}: circuito aberto após falhas repetidas; chamadas recusadas por {BreakSeconds} s...` | Circuit breaker abriu |
-| 2012 | Information | `Cofre {Provider}: circuito meio-aberto; testando o cofre com uma chamada.` | Fim da pausa |
-| 2013 | Information | `Cofre {Provider}: circuito fechado; o cofre voltou a responder.` | Chamada de teste com sucesso |
-| 2014 | Debug | `Cofre {Provider}: {Operation} de '{ItemName}' recusada com o circuito aberto.` | Cada chamada recusada (Debug para não inundar o log na queda) |
-| 2100 | Error | `Configuração do cofre ({Provider}): falha na carga inicial: {ErrorCode}.` | Carga **inicial** do `IConfiguration` falhou (só ela) |
-| 2101 | Warning | `... falha na recarga, valores anteriores mantidos: {ErrorCode}.` | Recarga falhou depois de uma carga aplicada (timer ou `Reload()` manual) |
-| 2102 | Error | `... {Count} segredos correspondem ao filtro, acima do limite MaxSecrets ({MaxSecrets})...` | Estouro de `MaxSecrets` |
-| 2103 | Error | `... tempo limite de {TimeoutSeconds} s excedido ao carregar os segredos.` | `LoadTimeout` |
-| 2104 | Information | `... {Count} segredos carregados ({Read} lidos do cofre) em {ElapsedMilliseconds} ms.` | Carga concluída |
-| 2105 | Error | `... recarga lançou {ExceptionType} inesperada; valores anteriores mantidos.` | Exceção na recarga |
-| 2106 | Error | `... a carga lançou {ExceptionType} inesperada.` | Exceção do leitor na carga inicial ou no `Reload()` (com pilha) |
-| 2107 | Debug | `... carga descartada, uma carga iniciada depois já foi aplicada.` | Cargas simultâneas: a mais antiga não sobrescreve a mais nova |
-| 3001 | Warning | `Link simbólico para fora da pasta de segredos ignorado: {Name}.` | Synced `Directory`: link cujo destino final sai da pasta |
-| 3002 | Warning | `Arquivo de segredo ignorado: o destino mudou entre a conferência e a abertura: {Name}.` | Synced `Directory`: o arquivo aberto não é o destino conferido (link trocado no meio) |
-| 3101 | Information | `AWS Secrets Manager: o serviço de metadados do EC2 não respondeu ({ExceptionType}); o processo passa a usar as chaves estáticas configuradas.` | AWS: IMDS sem resposta na primeira vez, com chaves estáticas como alternativa |
+| 7500 | Debug | `Cofre {Provider}: {Operation} de '{ItemName}' concluída em {ElapsedMilliseconds} ms.` | Leitura concluída |
+| 7501 | Information | `Auditoria do cofre {Provider}: {Operation} de '{ItemName}' concluída...` | Escrita concluída (inclui download de certificado) |
+| 7502 | Information | `Cofre {Provider}: {Operation} de '{ItemName}' retornou {ErrorCode} ({Detail}).` | Falha esperada em leitura (ex.: não encontrado) |
+| 7503 | Warning | `Auditoria do cofre ... retornou {ErrorCode} ({Detail}).` | Falha esperada em escrita |
+| 7504 | Error | `... falhou por infraestrutura: {ErrorCode} ({Detail}).` | Falha `ExternalService` ou `Failure` (inclui listagem acima do limite) |
+| 7505 | Error | `... lançou {ExceptionType} inesperada; convertida em {ErrorCode}.` | Exceção não mapeada (com pilha) |
+| 7506 | Debug | `... de '{ItemName}' recusada na validação de entrada ({Field}).` | Entrada inválida; `{ItemName}` vem como `<N caracteres, hmac:xxxxxxxxxxxx>` |
+| 7507 | Warning | `Health check do cofre falhou: {ErrorCode}.` | Health check com falha |
+| 7508 | Information | `Auditoria do cofre {Provider}: {Operation} de '{ItemName}': {Reason}.` | Leitura sensível (ex.: segredo gerenciado com chave privada) |
+| 7509 | Warning | `... rotação de '{ItemName}' gravou a versão {Version}, mas {Pending} versões anteriores podem continuar habilitadas ({ErrorCode})...` | `RotateSecretAsync` (sobrecarga com `ILogger`) incompleta |
+| 7510 | Warning | `Health check do cofre sem nenhuma verificação...` | Nenhum store registrado oferece verificação (ex.: só `IKeyCryptography` sem `IVaultHealthProbe`); registrado uma vez |
+| 7511 | Warning | `Cofre {Provider}: circuito aberto após falhas repetidas; chamadas recusadas por {BreakSeconds} s...` | Circuit breaker abriu |
+| 7512 | Information | `Cofre {Provider}: circuito meio-aberto; testando o cofre com uma chamada.` | Fim da pausa |
+| 7513 | Information | `Cofre {Provider}: circuito fechado; o cofre voltou a responder.` | Chamada de teste com sucesso |
+| 7514 | Debug | `Cofre {Provider}: {Operation} de '{ItemName}' recusada com o circuito aberto.` | Cada chamada recusada (Debug para não inundar o log na queda) |
+| 7600 | Error | `Configuração do cofre ({Provider}): falha na carga inicial: {ErrorCode}.` | Carga **inicial** do `IConfiguration` falhou (só ela) |
+| 7601 | Warning | `... falha na recarga, valores anteriores mantidos: {ErrorCode}.` | Recarga falhou depois de uma carga aplicada (timer ou `Reload()` manual) |
+| 7602 | Error | `... {Count} segredos correspondem ao filtro, acima do limite MaxSecrets ({MaxSecrets})...` | Estouro de `MaxSecrets` |
+| 7603 | Error | `... tempo limite de {TimeoutSeconds} s excedido ao carregar os segredos.` | `LoadTimeout` |
+| 7604 | Information | `... {Count} segredos carregados ({Read} lidos do cofre) em {ElapsedMilliseconds} ms.` | Carga concluída |
+| 7605 | Error | `... recarga lançou {ExceptionType} inesperada; valores anteriores mantidos.` | Exceção na recarga |
+| 7606 | Error | `... a carga lançou {ExceptionType} inesperada.` | Exceção do leitor na carga inicial ou no `Reload()` (com pilha) |
+| 7607 | Debug | `... carga descartada, uma carga iniciada depois já foi aplicada.` | Cargas simultâneas: a mais antiga não sobrescreve a mais nova |
+| 7001 | Warning | `Link simbólico para fora da pasta de segredos ignorado: {Name}.` | Synced `Directory`: link cujo destino final sai da pasta |
+| 7002 | Warning | `Arquivo de segredo ignorado: o destino mudou entre a conferência e a abertura: {Name}.` | Synced `Directory`: o arquivo aberto não é o destino conferido (link trocado no meio) |
+| 7101 | Information | `AWS Secrets Manager: o serviço de metadados do EC2 não respondeu ({ExceptionType}); o processo passa a usar as chaves estáticas configuradas.` | AWS: IMDS sem resposta na primeira vez, com chaves estáticas como alternativa |
 
+- Faixa de EventId do componente: **7000–7999** (CMP-OBS-07): núcleo 7500–7514 e 7600–7607, Synced 7001–7002, AWS 7101. Antes desta mudança os ids eram 2xxx (núcleo) e 3xxx (Synced, AWS): filtros e alertas por esses ids precisam ser atualizados (núcleo: 2000–2014 viram 7500–7514 e 2100–2107 viram 7600–7607; 3001, 3002 e 3101 viram 7001, 7002 e 7101).
 - `{Detail}` é um texto técnico seguro (ex.: `403 Forbidden ForbiddenByConnection`, `tempo limite`, `rede: ConnectionError`, `503 Retry-After acima do limite`, `listagem acima de 10000 itens`); nunca corpo de resposta, valor ou token.
 - Operações sem item (listagens, sonda) registram `'*'` como nome.
 
@@ -194,7 +201,7 @@ Não há opções próprias: a telemetria é sempre emitida e só é coletada se
 
 ## ❌ Erros
 
-Não se aplica: a telemetria nunca altera o resultado da operação. O código de erro da operação aparece em `vault.error_code`/`error.type` e nos eventos 2002–2005 (tabela de códigos em [Erros](erros.md)).
+Não se aplica: a telemetria nunca altera o resultado da operação. O código de erro da operação aparece em `vault.error_code`/`error.type` e nos eventos 7502–7505 (tabela de códigos em [Erros](erros.md)).
 
 ---
 
@@ -211,7 +218,7 @@ Não se aplica: a telemetria nunca altera o resultado da operação. O código d
 > cofre (`*.vault.azure.net`, `*.vault.azure.cn`, `*.vault.usgovcloudapi.net`); em outra pilha de observabilidade,
 > filtre esses hosts e o endereço do seu HashiCorp Vault/Infisical.
 
-- **Nome recusado no log:** uma entrada recusada pode ser lixo, texto de ataque ou até um segredo colado no campo errado. Por isso o evento 2006 não registra o nome como veio: usa `SensitiveDataMasker.DescribeUntrusted` do TEC.Core, que grava só o tamanho e um prefixo de HMAC-SHA256 com chave aleatória do processo (`<12 caracteres, hmac:3fa0c19b7e21>`; `<nulo>` e `<vazio>` nos casos triviais). Permite correlacionar ocorrências no mesmo processo sem permitir conferir palpites fora dele (a chave muda a cada reinício).
+- **Nome recusado no log:** uma entrada recusada pode ser lixo, texto de ataque ou até um segredo colado no campo errado. Por isso o evento 7506 não registra o nome como veio: usa `SensitiveDataMasker.DescribeUntrusted` do TEC.Core, que grava só o tamanho e um prefixo de HMAC-SHA256 com chave aleatória do processo (`<12 caracteres, hmac:3fa0c19b7e21>`; `<nulo>` e `<vazio>` nos casos triviais). Permite correlacionar ocorrências no mesmo processo sem permitir conferir palpites fora dele (a chave muda a cada reinício).
 - **Detalhe seguro:** o `{Detail}` dos eventos vem de `VaultFailure.Detail`, escrito pelo provedor com códigos e status, nunca com corpo de resposta.
 
 ---
@@ -229,7 +236,7 @@ De propósito: traces e métricas costumam ir para serviços de terceiros, e nom
 <details>
 <summary>Como auditar quem apagou ou purgou um item?</summary>
 
-Filtre os eventos 2001 (sucesso) e 2003 (falha) com `{Operation}` `*.delete` ou `*.purge`. A identidade que fez a
+Filtre os eventos 7501 (sucesso) e 7503 (falha) com `{Operation}` `*.delete` ou `*.purge`. A identidade que fez a
 operação é a da aplicação; combine com o escopo de correlação (usuário da requisição) do pipeline de logs.
 
 </details>

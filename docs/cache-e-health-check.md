@@ -46,7 +46,7 @@ flowchart LR
 | Falhas | Não são guardadas: a próxima leitura consulta o cofre de novo |
 | Expiração | Um valor expirado nunca é servido; sai da memória no próximo acesso (varredura no máximo a cada minuto, ou a cada duração se menor, mínimo 1 s) |
 | Encerramento | Com o container descartado, leituras em andamento terminam sem guardar; as seguintes vão direto ao provedor |
-| Métrica | `vault.cache.requests` com `vault.cache.result` = `hit`, `miss` ou `coalesced` ([📈 Observabilidade](observabilidade.md)) |
+| Métrica | `tec.vault.cache.requests` com `vault.cache.result` = `hit`, `miss` ou `coalesced` ([📈 Observabilidade](observabilidade.md)) |
 
 Registro resultante com o cache ligado:
 
@@ -75,7 +75,7 @@ sequenceDiagram
     alt todos ok
         HC-->>LB: Healthy - Cofre acessível.
     else alguma falha
-        HC->>HC: log Warning evento 2007 com o código
+        HC->>HC: log Warning evento 7507 com o código
         HC-->>LB: Unhealthy - Cofre inacessível.
     end
 ```
@@ -92,7 +92,7 @@ A sonda registrada pelo `AddTecVault` verifica **cada instância** de provedor r
 | Encadeado | Chama a sonda de cada leitor da cadeia que a implementa e devolve a primeira falha |
 | Em memória | Sempre saudável |
 | Provedor próprio sem sonda | Listagem de metadados (`ListSecretsAsync`, `ListKeysAsync`, `ListCertificatesAsync`) |
-| Só `IKeyCryptography`, sem sonda | Não é verificado (não há operação barata e sem efeito). Se nenhum store for verificável, a sonda responde saudável e registra um aviso (evento 2010, `Warning`) na primeira verificação |
+| Só `IKeyCryptography`, sem sonda | Não é verificado (não há operação barata e sem efeito). Se nenhum store for verificável, a sonda responde saudável e registra um aviso (evento 7510, `Warning`) na primeira verificação |
 
 ---
 
@@ -233,7 +233,7 @@ Implementada pelos stores de todos os provedores do TEC.Vault e pela sonda compo
 | `ArgumentOutOfRangeException` | `EnableSecretCache` com duração ≤ 0 ou > 1 hora | Use até 1 hora (recomendado até 5 minutos) |
 | `InvalidOperationException` | `Configuração inválida em Vault:Cache:Duration: ...` | Corrija o valor na configuração |
 | Códigos de `VaultErrors` | O cache só repassa os erros do provedor | Veja [❌ Erros](erros.md) |
-| Health `Unhealthy` com `"Cofre inacessível."` | Algum store falhou; o código vai para o log (evento 2007), tipicamente `VAULT_ACESSO_NEGADO`, `VAULT_AUTENTICACAO_FALHOU` ou `VAULT_INDISPONIVEL` | Conceda a permissão de listagem que falta, confira a rede ou reduza `Stores` |
+| Health `Unhealthy` com `"Cofre inacessível."` | Algum store falhou; o código vai para o log (evento 7507), tipicamente `VAULT_ACESSO_NEGADO`, `VAULT_AUTENTICACAO_FALHOU` ou `VAULT_INDISPONIVEL` | Conceda a permissão de listagem que falta, confira a rede ou reduza `Stores` |
 
 O health check nunca lança: a falha vira o `failureStatus` com a descrição fixa `"Cofre inacessível."`.
 
@@ -267,7 +267,7 @@ O cache está ligado e a escrita foi feita pela classe concreta do provedor (ou 
 <details>
 <summary>Health check <code>Unhealthy</code> com a aplicação funcionando.</summary>
 
-A sonda verifica **todos** os stores registrados; com `Stores = All` (padrão), a identidade precisa listar segredos, chaves **e** certificados. Registre só o que usa (`o.Stores = VaultStores.Secrets`) ou conceda a permissão que falta. O motivo está no log (evento 2007).
+A sonda verifica **todos** os stores registrados; com `Stores = All` (padrão), a identidade precisa listar segredos, chaves **e** certificados. Registre só o que usa (`o.Stores = VaultStores.Secrets`) ou conceda a permissão que falta. O motivo está no log (evento 7507).
 
 </details>
 

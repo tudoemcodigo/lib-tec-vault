@@ -37,8 +37,8 @@ Meio-aberto ──(sucesso)──▶ Fechado        Meio-aberto ──(falha)─
 - **Não abrem o circuito:** item não encontrado, acesso negado, autenticação, entrada inválida, conflito, falha não classificada (`VAULT_FALHA`) e cancelamento. Esses erros não indicam cofre fora do ar.
 - **Chamada de teste (meia-abertura):** só uma resposta do cofre a fecha (sucesso ou erro do item, como não encontrado). Se ela for cancelada ou terminar em `VAULT_FALHA`, conta como falha e o circuito volta a abrir. Enquanto a chamada de teste não termina, as demais continuam recebendo `VAULT_CIRCUITO_ABERTO`.
 - **Provedores locais** (em memória e Synced) e o `ChainedSecretReader` não têm circuit breaker (no encadeado, cada leitor da cadeia usa o seu).
-- **Health check:** com o circuito aberto, a verificação responde na hora como não saudável (`VAULT_CIRCUITO_ABERTO` no log, evento 2007) e tira a instância do balanceamento sem pressionar o cofre.
-- **`IConfiguration`:** a recarga periódica com o circuito aberto falha rápido e mantém os valores anteriores (evento 2101).
+- **Health check:** com o circuito aberto, a verificação responde na hora como não saudável (`VAULT_CIRCUITO_ABERTO` no log, evento 7507) e tira a instância do balanceamento sem pressionar o cofre.
+- **`IConfiguration`:** a recarga periódica com o circuito aberto falha rápido e mantém os valores anteriores (evento 7601).
 
 ## 🚀 Uso
 
@@ -103,12 +103,12 @@ Para escrever um provedor novo com circuit breaker: crie um `VaultCircuitBreaker
 
 | Sinal | Nome | Detalhe |
 |---|---|---|
-| Métrica | `vault.circuit.state_changes` | Contador com `vault.provider` e `vault.circuit.state` = `open`, `half_open` ou `closed` |
-| Métrica | `vault.operation.duration` | Chamadas recusadas aparecem com `error.type` = `VAULT_CIRCUITO_ABERTO` (duração próxima de zero) |
-| Log 2011 | Warning | Circuito aberto (com a duração da pausa) |
-| Log 2012 | Information | Circuito meio-aberto (chamada de teste) |
-| Log 2013 | Information | Circuito fechado (cofre voltou) |
-| Log 2014 | Debug | Chamada recusada com o circuito aberto. Fica em Debug para não inundar o log durante a queda |
+| Métrica | `tec.vault.circuit.state_changes` | Contador com `vault.provider` e `vault.circuit.state` = `open`, `half_open` ou `closed` |
+| Métrica | `tec.vault.operation.duration` | Chamadas recusadas aparecem com `error.type` = `VAULT_CIRCUITO_ABERTO` (duração próxima de zero) |
+| Log 7511 | Warning | Circuito aberto (com a duração da pausa) |
+| Log 7512 | Information | Circuito meio-aberto (chamada de teste) |
+| Log 7513 | Information | Circuito fechado (cofre voltou) |
+| Log 7514 | Debug | Chamada recusada com o circuito aberto. Fica em Debug para não inundar o log durante a queda |
 
 ## ❓ Perguntas frequentes
 

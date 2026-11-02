@@ -107,8 +107,8 @@ O nome do arquivo é o nome do segredo e o conteúdo é o valor. Formato do volu
 | Subpasta | Ignorada (só arquivos diretamente na pasta) |
 | Nome fora da regra do provedor (ex.: com espaço) | Ignorada |
 | Link simbólico cujo **destino final** fica dentro da pasta (destino absoluto ou relativo) | Lido (resolvido a cada leitura: acompanha a troca do `..data`) |
-| Link simbólico para **fora** da pasta (ex.: `/etc/passwd`, `../../outro`) | Ignorado, com log `Warning` (evento 3001, só o nome) |
-| Link trocado entre a conferência e a abertura do arquivo | Ignorado, com log `Warning` (evento 3002, só o nome) |
+| Link simbólico para **fora** da pasta (ex.: `/etc/passwd`, `../../outro`) | Ignorado, com log `Warning` (evento 7001, só o nome) |
+| Link trocado entre a conferência e a abertura do arquivo | Ignorado, com log `Warning` (evento 7002, só o nome) |
 | Link quebrado ou para pasta | Ignorado |
 | Dois nomes iguais sem diferenciar maiúsculas (possível no Linux) | O nome exato pedido é lido; a listagem e um pedido com outra grafia, que precisariam escolher um deles, **falham** (`VAULT_FALHA`) |
 | Mais arquivos válidos que `MaxItems` | A listagem **falha** (`VAULT_LISTAGEM_ACIMA_DO_LIMITE`) |
@@ -580,7 +580,7 @@ Montagens com `subPath` não recebem as atualizações do Kubernetes. Monte a pa
 <details>
 <summary>Um arquivo da pasta não aparece na listagem.</summary>
 
-Ele é ignorado se o nome começa com `.`, tem caractere fora da regra (espaço, por exemplo), é subpasta, ou é link para fora da pasta (procure o evento 3001 no log).
+Ele é ignorado se o nome começa com `.`, tem caractere fora da regra (espaço, por exemplo), é subpasta, ou é link para fora da pasta (procure o evento 7001 no log).
 </details>
 
 ---

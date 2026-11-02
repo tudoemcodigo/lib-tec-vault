@@ -29,7 +29,7 @@ flowchart TD
     C -->|"sucesso"| OK["Result de sucesso"]
     C -->|"exceção do SDK ou status HTTP"| M["Conversão do provedor<br/>MapException"]
     M -->|"conhecida"| E["VAULT_* específico"]
-    M -->|"desconhecida"| F["VAULT_FALHA<br/>pilha no log, evento 2005"]
+    M -->|"desconhecida"| F["VAULT_FALHA<br/>pilha no log, evento 7505"]
     C -->|"cancelado pelo chamador"| X["OperationCanceledException"]
 ```
 
@@ -99,7 +99,7 @@ public async Task<Result<TokenDto>> Handle(GetToken request, CancellationToken c
 
 > [!TIP]
 > Não transforme falhas de infraestrutura em mensagens para o usuário: elas indicam problema de configuração
-> (permissão, rede, limite) que só aparece no log, onde o código do cofre está registrado (eventos 2004 e 2005 em
+> (permissão, rede, limite) que só aparece no log, onde o código do cofre está registrado (eventos 7504 e 7505 em
 > [Observabilidade](observabilidade.md)).
 
 ---
@@ -143,8 +143,8 @@ public async Task<Result<TokenDto>> Handle(GetToken request, CancellationToken c
 | `AuthenticationFailedCode` | `VAULT_AUTENTICACAO_FALHOU` | ExternalService | 502 🔒 | Identidade indisponível, login recusado ou expirado, credencial ausente ou ilegível, tenant errado | Confira identidade, `TenantId`, arquivo/variável da credencial |
 | `ThrottledCode` | `VAULT_LIMITE_EXCEDIDO` | ExternalService | 502 🔒 | Limite de requisições do cofre (429) | Ligue o cache; reduza leituras e concorrência |
 | `UnavailableCode` | `VAULT_INDISPONIVEL` | ExternalService | 502 🔒 | Rede, DNS, tempo limite (também na leitura do corpo, no login e na leitura compartilhada do cache), 408/5xx, retentativas esgotadas, 503 com `Retry-After` acima do aceito | Verifique rede e status do cofre; ajuste tempos limite |
-| `CircuitOpenCode` | `VAULT_CIRCUITO_ABERTO` | ExternalService | 502 🔒 | Circuit breaker aberto: o cofre falhou repetidas vezes (`VAULT_INDISPONIVEL`/`VAULT_LIMITE_EXCEDIDO`) e a chamada foi recusada sem consultá-lo | Aguarde a volta do cofre; veja os eventos 2011-2014 e [🔁 Resiliência](resiliencia.md) |
-| `ProviderFailureCode` | `VAULT_FALHA` | ExternalService | 502 🔒 | Falha não classificada (pilha no log, evento 2005); resposta fora do formato ou acima do limite de tamanho | Veja o log |
+| `CircuitOpenCode` | `VAULT_CIRCUITO_ABERTO` | ExternalService | 502 🔒 | Circuit breaker aberto: o cofre falhou repetidas vezes (`VAULT_INDISPONIVEL`/`VAULT_LIMITE_EXCEDIDO`) e a chamada foi recusada sem consultá-lo | Aguarde a volta do cofre; veja os eventos 7511-2014 e [🔁 Resiliência](resiliencia.md) |
+| `ProviderFailureCode` | `VAULT_FALHA` | ExternalService | 502 🔒 | Falha não classificada (pilha no log, evento 7505); resposta fora do formato ou acima do limite de tamanho | Veja o log |
 | `NotSupportedCode` | `VAULT_OPERACAO_NAO_SUPORTADA` | Failure | 500 🔒 | Opção que o provedor não oferece (HSM, emissor, escrita pendente de aprovação no Infisical) | Remova a opção ou troque de provedor |
 | `CanceledCode` | `VAULT_OPERACAO_CANCELADA` | Failure | 500 🔒 | Só em `SecretRotationResult.Errors`: rotação cancelada **depois** de gravar a nova versão | Conclua com `DisablePreviousSecretVersionsAsync` (idempotente) |
 | `TooManyItemsCode` | `VAULT_LISTAGEM_ACIMA_DO_LIMITE` | Failure | 500 🔒 | A listagem passou do `MaxListItems` do provedor (Azure Key Vault, HashiCorp Vault, Infisical, AWS, Google) ou do `MaxItems` do Synced; o restante não é lido. Nenhum provedor devolve uma lista cortada | Use pasta/prefixo mais específico ou aumente o limite |
@@ -241,10 +241,10 @@ Detalhes de cada provedor: [Azure Key Vault](provedor-azure-key-vault.md) · [Ha
 
 | Código / exceção | Quando ocorre | O que fazer |
 |---|---|---|
-| `VAULT_ACESSO_NEGADO` em toda chamada | Identidade sem papel ou rede recusada; o log (evento 2004) traz o código do cofre, ex.: `403 Forbidden ForbiddenByRbac` ou `ForbiddenByConnection` | Conceda o papel mínimo (a propagação leva minutos) ou libere a rede |
+| `VAULT_ACESSO_NEGADO` em toda chamada | Identidade sem papel ou rede recusada; o log (evento 7504) traz o código do cofre, ex.: `403 Forbidden ForbiddenByRbac` ou `ForbiddenByConnection` | Conceda o papel mínimo (a propagação leva minutos) ou libere a rede |
 | `VAULT_CONFLITO` ao gravar/criar | Nome de um item excluído que ainda está na lixeira | `RecoverDeleted*` ou `PurgeDeleted*` antes de criar de novo |
 | `VAULT_LISTAGEM_ACIMA_DO_LIMITE` | Cofre com mais itens que `MaxListItems` | Limite o escopo (pasta/prefixo) ou aumente `MaxListItems` conscientemente |
-| `VAULT_FALHA` | Exceção não mapeada (evento 2005, com pilha) ou resposta inesperada | Veja o log; abra um chamado com o código e o detalhe |
+| `VAULT_FALHA` | Exceção não mapeada (evento 7505, com pilha) ou resposta inesperada | Veja o log; abra um chamado com o código e o detalhe |
 | `InvalidOperationException` na subida | Configuração inválida (mensagem cita o caminho da chave) | Corrija a opção indicada |
 
 ---
@@ -280,7 +280,7 @@ O provedor não implementa a capacidade (ex.: Infisical não tem lixeira nem bac
 <summary>Por que <code>VAULT_LISTAGEM_ACIMA_DO_LIMITE</code> é 500 e não 400?</summary>
 
 Porque não é culpa de quem chamou: é a aplicação que lista um cofre maior do que a configuração permite. O tipo
-`Failure` oculta a mensagem do cliente e aparece no log como falha de infraestrutura (evento 2004).
+`Failure` oculta a mensagem do cliente e aparece no log como falha de infraestrutura (evento 7504).
 
 </details>
 

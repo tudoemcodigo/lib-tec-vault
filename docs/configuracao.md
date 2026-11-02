@@ -213,7 +213,7 @@ Opções da fonte; tabela completa em [⚙️ Opções](#️-opções). A consta
 - **Recarga incremental:** só relê os segredos cuja versão (ou, sem versão na listagem, `UpdatedOn`) mudou desde a última carga. A cada 12 recargas (`FullReloadEvery`), relê tudo.
 - **Paralelismo limitado:** a primeira falha de leitura cancela as demais e a carga inteira falha (nunca publica uma configuração pela metade).
 - **Sem mudança, sem notificação:** se os valores não mudaram, `OnReload` não é disparado.
-- **Cargas simultâneas** (`IConfigurationRoot.Reload()` durante a recarga do timer): cada carga recebe um número de geração ao começar e só é aplicada se nenhuma carga iniciada depois já foi aplicada. Uma carga antiga e lenta é descartada (evento 2107 `Debug`).
+- **Cargas simultâneas** (`IConfigurationRoot.Reload()` durante a recarga do timer): cada carga recebe um número de geração ao começar e só é aplicada se nenhuma carga iniciada depois já foi aplicada. Uma carga antiga e lenta é descartada (evento 7607 `Debug`).
 - **Segredo removido do cofre** some da configuração na recarga seguinte.
 
 ---
@@ -222,16 +222,16 @@ Opções da fonte; tabela completa em [⚙️ Opções](#️-opções). A consta
 
 | Situação | Comportamento | Log (evento) |
 |---|---|---|
-| Carga concluída | Valores publicados no `IConfiguration` | 2104 `Information`: quantidade carregada e lida do cofre |
-| Primeira carga falha, `Optional = false` | `InvalidOperationException`: `Não foi possível carregar a configuração do cofre (<código>). Verifique o log e as permissões da identidade da aplicação.` A aplicação não sobe | 2100 `Error` |
-| Primeira carga falha, `Optional = true` | Sobe com configuração vazia | 2100 `Error` |
-| Leitor **lança exceção** na carga, `Optional = false` | A exceção original é propagada | 2106 `Error` (com pilha) |
-| Leitor lança exceção na carga, `Optional = true` | Sobe com configuração vazia (ou mantém os valores, se já houve carga); a recarga do timer continua agendada | 2106 `Error` + 2100 `Error` (`EXCECAO_NA_CARGA`); se já houve carga aplicada, 2101 `Warning` no lugar do 2100 |
-| `IConfigurationRoot.Reload()` falha depois de uma carga bem-sucedida | Valores anteriores **mantidos**; sem `Optional`, o `Reload()` lança `InvalidOperationException` | 2101 `Warning` (2100 `Error` fica só para a carga inicial) |
-| Recarga do **timer** falha | Valores anteriores **mantidos** | 2101 `Warning` |
-| Mais segredos que `MaxSecrets` | Falha fechada, código lógico `LIMITE_MAX_SECRETS` | 2102 `Error` |
-| Passou de `LoadTimeout` | Falha, código lógico `TEMPO_LIMITE` | 2103 `Error` |
-| Exceção inesperada na recarga do timer (inclusive de um assinante de `OnReload`) | Valores mantidos | 2105 `Error` |
+| Carga concluída | Valores publicados no `IConfiguration` | 7604 `Information`: quantidade carregada e lida do cofre |
+| Primeira carga falha, `Optional = false` | `InvalidOperationException`: `Não foi possível carregar a configuração do cofre (<código>). Verifique o log e as permissões da identidade da aplicação.` A aplicação não sobe | 7600 `Error` |
+| Primeira carga falha, `Optional = true` | Sobe com configuração vazia | 7600 `Error` |
+| Leitor **lança exceção** na carga, `Optional = false` | A exceção original é propagada | 7606 `Error` (com pilha) |
+| Leitor lança exceção na carga, `Optional = true` | Sobe com configuração vazia (ou mantém os valores, se já houve carga); a recarga do timer continua agendada | 7606 `Error` + 7600 `Error` (`EXCECAO_NA_CARGA`); se já houve carga aplicada, 7601 `Warning` no lugar do 7600 |
+| `IConfigurationRoot.Reload()` falha depois de uma carga bem-sucedida | Valores anteriores **mantidos**; sem `Optional`, o `Reload()` lança `InvalidOperationException` | 7601 `Warning` (7600 `Error` fica só para a carga inicial) |
+| Recarga do **timer** falha | Valores anteriores **mantidos** | 7601 `Warning` |
+| Mais segredos que `MaxSecrets` | Falha fechada, código lógico `LIMITE_MAX_SECRETS` | 7602 `Error` |
+| Passou de `LoadTimeout` | Falha, código lógico `TEMPO_LIMITE` | 7603 `Error` |
+| Exceção inesperada na recarga do timer (inclusive de um assinante de `OnReload`) | Valores mantidos | 7605 `Error` |
 
 Erros de registro:
 
@@ -265,7 +265,7 @@ Erros de registro:
 <details>
 <summary>A aplicação não sobe: <code>Não foi possível carregar a configuração do cofre (VAULT_...)</code></summary>
 
-A carga inicial falhou (falha fechada por padrão). Códigos lógicos possíveis além dos de `VaultErrors`: `TEMPO_LIMITE` (passou de `LoadTimeout`) e `LIMITE_MAX_SECRETS` (mais segredos que `MaxSecrets`). Veja o log (eventos 2100–2103), corrija permissão/prefixo ou aumente os limites. Sem `loggerFactory`, só a exceção informa o motivo.
+A carga inicial falhou (falha fechada por padrão). Códigos lógicos possíveis além dos de `VaultErrors`: `TEMPO_LIMITE` (passou de `LoadTimeout`) e `LIMITE_MAX_SECRETS` (mais segredos que `MaxSecrets`). Veja o log (eventos 7600–7603), corrija permissão/prefixo ou aumente os limites. Sem `loggerFactory`, só a exceção informa o motivo.
 
 </details>
 
