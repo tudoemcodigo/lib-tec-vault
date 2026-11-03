@@ -28,6 +28,7 @@ Azure Key Vault · HashiCorp Vault/OpenBao · AWS Secrets Manager · Google Secr
 - [📥 Instalação](#-instalação)
 - [🚀 Início rápido](#-início-rápido)
 - [🧭 O que tem dentro](#-o-que-tem-dentro)
+- [🧩 Diagrama de arquitetura](#-diagrama-de-arquitetura)
 - [📚 Documentação](#-documentação)
 - [⚡ Compatibilidade](#-compatibilidade)
 - [🛡️ Segurança](#️-segurança)
@@ -216,6 +217,100 @@ flowchart LR
 | Em memória | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 `AddTecVault` registra cada interface que o provedor implementa apontando para a mesma instância (singleton, thread-safe); pedir uma interface que o provedor não oferece falha na resolução do DI, não em tempo de execução.
+
+## 🧩 Diagrama de arquitetura
+
+Componentes e ligações do `TEC.Vault`, gerados pelo [GitDiagram](https://gitdiagram.com/tudoemcodigo/lib-tec-vault) a partir da `main` em 02/11/2026. O diagrama é gerado por IA a partir de uma amostra do código: use-o como mapa de leitura, não como contrato.
+
+```mermaid
+flowchart TD
+
+subgraph group_api["API and setup"]
+  node_configuration["Vault configuration"]
+  node_registration["Service registration"]
+  node_builder["Vault builder<br/>[VaultBuilder.cs]"]
+  node_settings["Provider settings<br/>[VaultSettings.cs]"]
+  node_stores["Store interfaces<br/>[VaultStores.cs]"]
+  node_keyapi["Key store API<br/>[IKeyStore.cs]"]
+  node_certificateapi["Certificate store API"]
+  node_healthprobe["Health probe API"]
+end
+
+subgraph group_providers["Vault providers"]
+  node_azurekeys["Azure key store"]
+  node_azureclients["Azure clients"]
+  node_hashicert["HashiCorp certificates"]
+  node_hashioptions["HashiCorp options"]
+  node_hashiclient["HashiCorp client"]
+  node_infisical["Infisical integration"]
+  node_synced["Synchronized secrets"]
+  node_memorykeys["In-memory keys"]
+end
+
+subgraph group_runtime["Shared runtime"]
+  node_errors["Standard errors<br/>[VaultErrors.cs]"]
+  node_endpoint["Endpoint validation<br/>[VaultEndpoint.cs]"]
+  node_httpclient["HTTP transport<br/>[VaultHttpClient.cs]"]
+  node_tokens["Token source"]
+  node_circuit["Circuit breaker"]
+  node_keyrules["Key validation<br/>[VaultKeyRules.cs]"]
+end
+
+subgraph group_operations["Operations"]
+  node_health["Health checks"]
+  node_diagnostics["Diagnostics"]
+  node_log["Vault logging<br/>[VaultLog.cs]"]
+end
+
+node_application(("Application"))
+node_azurevault[("Azure Key Vault")]
+node_hashivault[("HashiCorp Vault")]
+
+node_application -->|"sets options"| node_configuration
+node_configuration -->|"selects provider"| node_registration
+node_registration -->|"resolves settings"| node_settings
+node_registration -->|"configures"| node_builder
+node_builder -->|"registers stores"| node_stores
+node_application -->|"uses"| node_keyapi
+node_application -->|"uses"| node_certificateapi
+node_azurekeys -->|"implements"| node_keyapi
+node_azurekeys -->|"uses clients"| node_azureclients
+node_azureclients -->|"accesses"| node_azurevault
+node_hashicert -->|"implements"| node_certificateapi
+node_hashicert -->|"uses client"| node_hashiclient
+node_hashicert -->|"reads options"| node_hashioptions
+node_hashiclient -->|"sends requests"| node_httpclient
+node_hashiclient -->|"gets tokens"| node_tokens
+node_hashiclient -->|"creates breaker"| node_circuit
+node_hashiclient -->|"accesses"| node_hashivault
+node_hashioptions -->|"validates address"| node_endpoint
+node_infisical -.->|"uses HTTP endpoint"| node_endpoint
+node_synced -.->|"provides secrets"| node_application
+node_memorykeys -->|"implements"| node_keyapi
+node_registration -->|"registers probe"| node_healthprobe
+node_health -->|"checks access"| node_healthprobe
+node_azurekeys -->|"returns standard errors"| node_errors
+node_hashicert -->|"returns standard errors"| node_errors
+node_httpclient -.->|"uses breaker"| node_circuit
+node_circuit -->|"records metrics"| node_diagnostics
+node_health -->|"logs failures"| node_log
+node_azurekeys -->|"validates keys"| node_keyrules
+node_memorykeys -->|"validates keys"| node_keyrules
+
+
+classDef toneNeutral fill:#f8fafc,stroke:#334155,stroke-width:1.5px,color:#0f172a
+classDef toneBlue fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px,color:#172554
+classDef toneAmber fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#78350f
+classDef toneMint fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px,color:#14532d
+classDef toneRose fill:#ffe4e6,stroke:#e11d48,stroke-width:1.5px,color:#881337
+classDef toneIndigo fill:#e0e7ff,stroke:#4f46e5,stroke-width:1.5px,color:#312e81
+classDef toneTeal fill:#ccfbf1,stroke:#0f766e,stroke-width:1.5px,color:#134e4a
+class node_configuration,node_registration,node_builder,node_settings,node_stores,node_keyapi,node_certificateapi,node_healthprobe toneBlue
+class node_azurekeys,node_azureclients,node_hashicert,node_hashioptions,node_hashiclient,node_infisical,node_synced,node_memorykeys,node_azurevault,node_hashivault toneAmber
+class node_errors,node_endpoint,node_httpclient,node_tokens,node_circuit,node_keyrules toneMint
+class node_health,node_diagnostics,node_log toneRose
+class node_application toneIndigo
+```
 
 ## 📚 Documentação
 
